@@ -22,7 +22,7 @@
     "lodash": "^4.17.21",
     "pg": "^8.16.3",
     "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^6.0.1",
     "tiny-essentials": "^1.24.2"
   },
   "keywords": [
