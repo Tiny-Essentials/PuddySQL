@@ -1,7 +1,7 @@
-import { isJsonObject } from 'tiny-essentials';
 import { pg } from './Modules.mjs';
 import PuddySqlEngine from './PuddySqlEngine.mjs';
 import PuddySqlTags from './PuddySqlTags.mjs';
+import { isJsonObject } from './Utils.mjs';
 
 /**
  * Defines the schema structure used to create or modify SQL tables programmatically.
