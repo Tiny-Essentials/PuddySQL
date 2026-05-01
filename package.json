@@ -56,7 +56,7 @@
     "fix:prettier:rollup.config": "prettier --write ./rollup.config.mjs",
     "fix:prettier:webpack.config": "prettier --write ./webpack.config.mjs",
     "auto-build": "npm run build",
-    "build": "tsc -p tsconfig.json && rollup -c && webpack --mode production",
+    "build": "npm run build:essentials && tsc -p tsconfig.json && rollup -c && webpack --mode production",
     "build:essentials": "npx tiny-essentials-fork --out-dir=src/tiny-modules basics/objChecker/isJsonObject",
     "build-clean": "npm run clean && npm run build",
     "build-dist": "npm run build",
