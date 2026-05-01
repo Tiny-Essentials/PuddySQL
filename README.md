@@ -41,6 +41,14 @@ npm install puddysql
 * 📃 Smart pagination with automatic counters
 * 🧪 Strong input validation and type safety
 
+### Build 📦
+
+To get started, please install the project dependencies. It is **mandatory** to run the build command afterward to ensure the module works correctly:
+```bash
+npm install
+npm run build:essentials
+```
+
 ---
 
 ## 📚 Documentation

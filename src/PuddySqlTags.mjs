@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { isJsonObject } from './Utils.mjs';
+import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /** @typedef {{ title: string; parser?: (value: string) => string }} SpecialQuery */
 /** @typedef {import('./PuddySqlQuery.mjs').Pcache} Pcache */

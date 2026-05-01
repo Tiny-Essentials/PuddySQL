@@ -1,7 +1,8 @@
 import { open, Database } from 'sqlite';
 import { EventEmitter } from 'events';
 
-import { isJsonObject, validatePostgresParams } from './Utils.mjs';
+import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
+import { validatePostgresParams } from './Utils.mjs';
 import { pg, sqlite3 } from './Modules.mjs';
 import PuddySqlEngine from './PuddySqlEngine.mjs';
 import PuddySqlQuery from './PuddySqlQuery.mjs';

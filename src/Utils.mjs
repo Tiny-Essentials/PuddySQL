@@ -1,13 +1,4 @@
 /**
- * Validates if the provided value is a non-null object.
- * @param {unknown} value - The value to evaluate.
- * @returns {value is Record<string | number | symbol, unknown>} True if the value is a type of object and specifically not null.
- */
-export function isJsonObject(value) {
-  return value !== null && !Array.isArray(value) && typeof value === 'object'; 
-}
-
-/**
  * Converts PostgreSQL-style SQL placeholders ($1, $2, ...) to MySQL-style placeholders (?).
  * Maintains full compatibility with repeated and unordered params.
  *
