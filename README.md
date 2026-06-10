@@ -172,7 +172,7 @@ Feel free to fork, contribute, and create pull requests for improvements! Whethe
 
 ## 📝 License
 
-This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the LGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 > 🧠 **Note**: This documentation was written by [ChatGPT](https://openai.com/chatgpt), an AI assistant developed by OpenAI, based on the project structure and descriptions provided by the repository author.  
 > If you find any inaccuracies or need improvements, feel free to contribute or open an issue!
