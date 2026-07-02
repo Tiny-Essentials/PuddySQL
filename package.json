@@ -47,7 +47,7 @@
   ],
   "scripts": {
     "test": "npm run test:mjs && npm run test:cjs && npm run test:js",
-    "test:js": "npx babel-node test/index.js",
+    "test:js": "node -r @babel/register test/index.js",
     "test:mjs": "node test/index.mjs",
     "test:cjs": "node test/index.cjs",
     "fix:prettier": "npm run fix:prettier:src && npm run fix:prettier:test && npm run fix:prettier:rollup.config && npm run fix:prettier:webpack.config",
@@ -64,10 +64,11 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@babel/cli": "^7.27.2",
-    "@babel/core": "^7.27.7",
-    "@babel/node": "^7.27.1",
-    "@babel/preset-env": "^7.27.2",
+    "@babel/cli": "^8.0.1",
+    "@babel/core": "^8.0.1",
+    "@babel/node": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@babel/register": "^8.0.1",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
