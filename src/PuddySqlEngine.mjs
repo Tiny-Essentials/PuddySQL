@@ -1,4 +1,10 @@
-class PuddySqlEngine {
+import { EventEmitter } from 'events';
+
+class PuddySqlEngine extends EventEmitter {
+  constructor() {
+    super();
+  }
+
   /** @type {string} */
   #sqlEngine = '';
 
