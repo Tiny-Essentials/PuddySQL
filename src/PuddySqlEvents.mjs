@@ -27,7 +27,9 @@ class PuddySqlEvents {
   static ConnectionError = 'Connection-Error';
 
   /**
-   * @returns {string[]}
+   * Retrieves a list of all event name strings defined in this class.
+   *
+   * @returns {string[]} An array containing all defined event name strings.
    */
   static get all() {
     const items = [];
@@ -42,8 +44,10 @@ class PuddySqlEvents {
   }
 
   /**
-   * @param {string} event
-   * @returns {boolean}
+   * Validates whether the provided event name is a valid, predefined event identifier.
+   *
+   * @param {string} event The event name to be validated.
+   * @returns {boolean} True if the event name is valid, false otherwise.
    */
   static isValid(event) {
     return this.all.includes(event);

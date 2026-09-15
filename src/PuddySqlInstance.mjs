@@ -37,21 +37,21 @@ class PuddySqlInstance extends PuddySqlEngine {
   #consoleColors = true;
 
   /**
-   * Getter para acessar o sistema de migração.
-   * @returns {PuddySqlMigrator<this>}
+   * Getter to access the migration system.
+   * @returns {PuddySqlMigrator<this>} The migrator instance.
    */
   get migrator() {
     return this.#migrator;
   }
 
   /**
-   * Inicia o processo de migração do banco de dados.
+   * Starts the database migration process.
    *
-   * ⚠️ **IMPORTANTE:** Chame este método apenas após garantir que as tabelas
-   * base do seu projeto já foram verificadas/criadas.
+   * ⚠️ **IMPORTANT:** Call this method only after ensuring that the base
+   * tables of your project have already been verified/created.
    *
-   * @param {number} targetVersion - A versão final que o banco deve atingir.
-   * @returns {Promise<void>}
+   * @param {number} targetVersion - The final version the database should reach.
+   * @returns {Promise<void>} A promise that resolves when the migration is complete.
    */
   async startMigration(targetVersion) {
     return await this.#migrator.start(targetVersion);
