@@ -48,6 +48,34 @@ class PuddySqlEvents {
   static isValid(event) {
     return this.all.includes(event);
   }
+
+  /**
+   * Constant identifier used when a migration starts.
+   * @type {string}
+   * @static
+   */
+  static MigrationStarting = 'Migration-Starting';
+
+  /**
+   * Constant identifier used when a migration finishes successfully.
+   * @type {string}
+   * @static
+   */
+  static MigrationCompleted = 'Migration-Completed';
+
+  /**
+   * Constant identifier used when the entire migration process finishes.
+   * @type {string}
+   * @static
+   */
+  static MigrationFinished = 'Migration-Finished';
+
+  /**
+   * Constant identifier used when a migration encounters an error.
+   * @type {string}
+   * @static
+   */
+  static MigrationError = 'Migration-Error';
 }
 
 export default PuddySqlEvents;

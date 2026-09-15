@@ -10,6 +10,38 @@
     ".": {
       "require": "./dist/index.cjs",
       "import": "./dist/index.mjs"
+    },
+    "./Engine": {
+      "require": "./dist/PuddySqlEngine.cjs",
+      "import": "./dist/PuddySqlEngine.mjs"
+    },
+    "./Events": {
+      "require": "./dist/PuddySqlEvents.cjs",
+      "import": "./dist/PuddySqlEvents.mjs"
+    },
+    "./Instance": {
+      "require": "./dist/PuddySqlInstance.cjs",
+      "import": "./dist/PuddySqlInstance.mjs"
+    },
+    "./Migrator": {
+      "require": "./dist/PuddySqlMigrator.cjs",
+      "import": "./dist/PuddySqlMigrator.mjs"
+    },
+    "./Query": {
+      "require": "./dist/PuddySqlQuery.cjs",
+      "import": "./dist/PuddySqlQuery.mjs"
+    },
+    "./Tags": {
+      "require": "./dist/PuddySqlTags.cjs",
+      "import": "./dist/PuddySqlTags.mjs"
+    },
+    "./Modules": {
+      "require": "./dist/Modules.cjs",
+      "import": "./dist/Modules.mjs"
+    },
+    "./Utils": {
+      "require": "./dist/Utils.cjs",
+      "import": "./dist/Utils.mjs"
     }
   },
   "repository": {

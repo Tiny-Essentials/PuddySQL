@@ -6,6 +6,7 @@ import { pg, sqlite3 } from './Modules.mjs';
 import PuddySqlEngine from './PuddySqlEngine.mjs';
 import PuddySqlQuery from './PuddySqlQuery.mjs';
 import PuddySqlEvents from './PuddySqlEvents.mjs';
+import PuddySqlMigrator from './PuddySqlMigrator.mjs';
 
 /** @typedef {import('pg').Pool} PgPool */
 /** @typedef {import('sqlite').Database} SqliteDb */
@@ -17,6 +18,7 @@ import PuddySqlEvents from './PuddySqlEvents.mjs';
 class PuddySqlInstance extends PuddySqlEngine {
   constructor() {
     super();
+    this.#migrator = new PuddySqlMigrator(this, 'puddy_migrations');
   }
 
   /** @typedef {import('./PuddySqlQuery.mjs').TableSettings} TableSettings */
@@ -27,9 +29,31 @@ class PuddySqlInstance extends PuddySqlEngine {
 
   /** @type {Record<string, PuddySqlQuery>} */
   #tables = {};
+  #migrator;
   #debug = false;
   #debugCount = 0;
   #consoleColors = true;
+
+  /**
+   * Getter para acessar o sistema de migração.
+   * @returns {PuddySqlMigrator}
+   */
+  get migrator() {
+    return this.#migrator;
+  }
+
+  /**
+   * Inicia o processo de migração do banco de dados.
+   *
+   * ⚠️ **IMPORTANTE:** Chame este método apenas após garantir que as tabelas
+   * base do seu projeto já foram verificadas/criadas.
+   *
+   * @param {number} targetVersion - A versão final que o banco deve atingir.
+   * @returns {Promise<void>}
+   */
+  async startMigration(targetVersion) {
+    return await this.#migrator.start(targetVersion);
+  }
 
   /**
    * Enables or disables console color output for debug messages.

@@ -4,12 +4,14 @@ import PuddySqlEvents from './PuddySqlEvents.mjs';
 import PuddySqlInstance from './PuddySqlInstance.mjs';
 import PuddySqlQuery from './PuddySqlQuery.mjs';
 import PuddySqlTags from './PuddySqlTags.mjs';
+import PuddySqlMigrator from './PuddySqlMigrator.mjs';
 
 class PuddySql {
   static Instance = PuddySqlInstance;
   static Query = PuddySqlQuery;
   static Tags = PuddySqlTags;
   static Events = PuddySqlEvents;
+  static Migrator = PuddySqlMigrator;
   static Utils = Utils;
   static pg = pg;
   static sqlite3 = sqlite3;
