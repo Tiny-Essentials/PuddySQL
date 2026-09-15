@@ -5,7 +5,7 @@
 // ╚═══════════════════════════════════════════════╝
 
 import stringify from 'safe-stable-stringify';
-import { ColorSafeStringify } from 'tiny-essentials';
+import ColorSafeStringify from 'tiny-essentials/libs/color/ColorSafeStringify';
 import PuddySql from '../dist/index.mjs';
 
 const colorJsonSafe = new ColorSafeStringify();
