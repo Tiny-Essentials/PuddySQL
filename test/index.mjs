@@ -19,11 +19,21 @@ const db = new PuddySql.Instance();
   console.log('\n🔧 \x1b[1mInitializing SQLite3...\x1b[0m\n');
   await db.initSqlite3();
 
+  db.migrator.addMigration(1, async (db) => {
+    await db.run('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)');
+  });
+
+  db.migrator.addMigration(2, async (db) => {
+    await db.run('ALTER TABLE users ADD COLUMN email TEXT');
+  });
+
   const table = await db.initTable({ name: 'tinytest', id: 'id', order: 'id ASC' }, [
     ['id', 'TEXT', 'PRIMARY KEY'],
     ['prompt', 'TEXT'],
     ['yay', 'BOOLEAN'],
   ]);
+
+  await db.startMigration(2);
 
   console.log('\n📥 \x1b[36mInserting test data...\x1b[0m\n');
   console.table(
