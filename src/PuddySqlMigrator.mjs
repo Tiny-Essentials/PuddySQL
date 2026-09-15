@@ -7,18 +7,24 @@ import PuddySqlEvents from './PuddySqlEvents.mjs';
  */
 
 /**
+ * @template {import('./PuddySqlInstance.mjs').default} Instance
+ * @typedef {(db: Instance) => Promise<void>} MigratorCallback
+ */
+
+/**
+ * @template {import('./PuddySqlInstance.mjs').default} Instance
  * PuddySqlMigrator manages database schema versioning and migrations.
  */
 class PuddySqlMigrator {
-  /** @type {import('./PuddySqlInstance.mjs').default} */
+  /** @type {Instance} */
   #db;
   /** @type {string} */
   #tableName;
-  /** @type {Map<number, (db: any) => Promise<void>>} */
+  /** @type {Map<number, MigratorCallback<Instance>>} */
   #migrations = new Map();
 
   /**
-   * @param {import('./PuddySqlInstance.mjs').default} db - The PuddySql instance.
+   * @param {Instance} db - The PuddySql instance.
    * @param {string} [tableName='puddy_migrations'] - The table name for versioning.
    */
   constructor(db, tableName = 'puddy_migrations') {
@@ -30,7 +36,7 @@ class PuddySqlMigrator {
    * Registers a migration callback for a specific version.
    *
    * @param {number} version - The version number this migration belongs to.
-   * @param {(db: import('./PuddySqlInstance.mjs').default) => Promise<void>} callback - Async function containing the migration logic.
+   * @param {MigratorCallback<Instance>} callback - Async function containing the migration logic.
    * @throws {TypeError} If version is not a number or callback is not a function.
    */
   addMigration(version, callback) {

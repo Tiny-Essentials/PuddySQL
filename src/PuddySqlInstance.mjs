@@ -16,9 +16,10 @@ import PuddySqlMigrator from './PuddySqlMigrator.mjs';
  * It supports inserting, updating, deleting, querying and joining JSON-based structured data.
  */
 class PuddySqlInstance extends PuddySqlEngine {
-  constructor() {
+  /** @param {string} [migratorTableName='puddy_migrations'] */
+  constructor(migratorTableName = 'puddy_migrations') {
     super();
-    this.#migrator = new PuddySqlMigrator(this, 'puddy_migrations');
+    this.#migrator = new PuddySqlMigrator(this, migratorTableName);
   }
 
   /** @typedef {import('./PuddySqlQuery.mjs').TableSettings} TableSettings */
@@ -29,6 +30,7 @@ class PuddySqlInstance extends PuddySqlEngine {
 
   /** @type {Record<string, PuddySqlQuery>} */
   #tables = {};
+  /** @type {PuddySqlMigrator<this>} */
   #migrator;
   #debug = false;
   #debugCount = 0;
@@ -36,7 +38,7 @@ class PuddySqlInstance extends PuddySqlEngine {
 
   /**
    * Getter para acessar o sistema de migração.
-   * @returns {PuddySqlMigrator}
+   * @returns {PuddySqlMigrator<this>}
    */
   get migrator() {
     return this.#migrator;
