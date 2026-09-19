@@ -1586,8 +1586,8 @@ class PuddySqlQuery {
       }
     } else {
       // Single ID mode
-      if (typeof id !== 'string' && typeof id !== 'number')
-        throw new TypeError(`Expected 'id' to be a string or number when using single value mode`);
+      if (id !== null && typeof id !== 'string' && typeof id !== 'number')
+        throw new TypeError(`Expected 'id' to be a string, number or null when using single value mode`);
     }
 
     // Prepare validator
@@ -1614,19 +1614,27 @@ class PuddySqlQuery {
     const allParams = [];
     const valuePlaceholders = [];
 
+    // Hide/include the instruction ID column depending on being null
+    const hasExplicitId = ids[0] !== null;
+    const insertColumns = hasExplicitId ? [this.#settings.id, ...columns] : [...columns];
+
     // Insert content
     for (let i = 0; i < objects.length; i++) {
       const obj = objects[i];
       const rowId = isArray ? ids[i] : ids[0];
-      const values = [rowId, ...columns.map((col) => this.escapeValuesFix(obj[col], col))];
+      
+      const values = rowId !== null 
+        ? [rowId, ...columns.map((col) => this.escapeValuesFix(obj[col], col))]
+        : columns.map((col) => this.escapeValuesFix(obj[col], col));
+
       allParams.push(...values);
 
-      const offset = i * (columns.length + 1); // +1 for ID
+      const offset = i * values.length;
       const placeholders = values.map((_, idx) => `$${offset + idx + 1}`).join(', ');
       valuePlaceholders.push(`(${placeholders})`);
     }
 
-    let query = `INSERT INTO ${this.#settings.name} (${this.#settings.id}, ${columns.join(', ')}) 
+    let query = `INSERT INTO ${this.#settings.name} (${insertColumns.join(', ')}) 
                    VALUES ${valuePlaceholders.join(', ')}`;
 
     if (!onlyIfNew) {
@@ -1681,6 +1689,17 @@ class PuddySqlQuery {
    */
   set(id, valueObj, onlyIfNew) {
     return this.#set(id, valueObj, onlyIfNew);
+  }
+
+  /**
+   * Add one record with given data.
+   *
+   * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
+   * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
+   * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
+   */
+  add(valueObj) {
+    return this.#set(null, valueObj, true);
   }
 
   /**

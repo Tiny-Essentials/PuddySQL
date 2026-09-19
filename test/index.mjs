@@ -7,6 +7,7 @@
 import stringify from 'safe-stable-stringify';
 import ColorSafeStringify from 'tiny-essentials/libs/color/ColorSafeStringify';
 import PuddySql from '../dist/index.mjs';
+import PuddySqlEvents from '../dist/PuddySqlEvents.mjs';
 
 const colorJsonSafe = new ColorSafeStringify();
 const colorSafeStringify = (json, space = 0) =>
@@ -19,21 +20,62 @@ const db = new PuddySql.Instance();
   console.log('\n🔧 \x1b[1mInitializing SQLite3...\x1b[0m\n');
   await db.initSqlite3();
 
+  console.log('\n🚀 \x1b[1;35m--- Starting Migration Tests ---\x1b[0m\n');
+
+  const users = await db.initTable({ name: 'users', id: 'id', order: 'id ASC' }, [
+    ['id', 'INTEGER', 'PRIMARY KEY'],
+    ['name', 'TEXT'],
+    ['email', 'TEXT'],
+  ]);
+
+  db.on(PuddySqlEvents.MigrationStarting, (v) =>
+    console.log(`\x1b[33m[EVENT] Migration-Starting: Version ${v}\x1b[0m`),
+  );
+  db.on(PuddySqlEvents.MigrationCompleted, (v) =>
+    console.log(`\x1b[32m[EVENT] Migration-Completed: Version ${v}\x1b[0m`),
+  );
+  db.on(PuddySqlEvents.MigrationFinished, () =>
+    console.log(`\x1b[32m[EVENT] Migration-Finished: All processes complete.\x1b[0m`),
+  );
+  db.on(PuddySqlEvents.MigrationError, (err) =>
+    console.log(`\x1b[31m[EVENT] Migration-Error: ${JSON.stringify(err)}\x1b[0m`),
+  );
+
   db.migrator.addMigration(1, async (db) => {
-    await db.run('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)');
+    // await db.run('ALTER TABLE users ADD COLUMN email TEXT');
+    console.log('   └─ [Migration 2] Column "email" added to "users".');
   });
 
-  db.migrator.addMigration(2, async (db) => {
-    await db.run('ALTER TABLE users ADD COLUMN email TEXT');
+  db.migrator.addMigration(2, async () => {
+    throw new Error('Simulated database failure during migration!');
   });
+
+  console.log('\x1b[1;36m[TEST] Running migrations to version 1...\x1b[0m');
+  await db.startMigration(1);
+
+  console.log('\x1b[1;32m[CHECK] Verifying "users" table schema...\x1b[0m');
+  await users.add({ name: 'Pudding', email: 'pudding@example.com' });
+  const userCheck = await db.get('SELECT email FROM users LIMIT 1');
+  if (userCheck && userCheck.email !== undefined) {
+    console.log('✅ \x1b[32mMigration Success: "email" column is present.\x1b[0m');
+  } else {
+    console.error('❌ \x1b[31mMigration Failed: "email" column not found!\x1b[0m');
+  }
+
+  console.log('\n\x1b[1;36m[TEST] Attempting migration to version 2 (Expected Failure)...\x1b[0m');
+  try {
+    await db.startMigration(2);
+  } catch (err) {
+    console.log(`\x1b[33m✅ Caught expected error: ${err.message}\x1b[0m`);
+  }
+
+  console.log('\n\x1b[1;35m--- Migration Tests Completed ---\x1b[0m\n');
 
   const table = await db.initTable({ name: 'tinytest', id: 'id', order: 'id ASC' }, [
     ['id', 'TEXT', 'PRIMARY KEY'],
     ['prompt', 'TEXT'],
     ['yay', 'BOOLEAN'],
   ]);
-
-  await db.startMigration(2);
 
   console.log('\n📥 \x1b[36mInserting test data...\x1b[0m\n');
   console.table(
