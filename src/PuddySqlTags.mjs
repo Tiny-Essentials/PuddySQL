@@ -416,7 +416,7 @@ class PuddySqlTags {
    *
    * @returns {string} The generated SQL condition string (e.g., `(EXISTS (...)) AND (NOT EXISTS (...))`).
    */
-  parseWhere(group = {}, pCache = { index: 1, values: [] }) {
+  _parseWhere(group = {}, pCache = { index: 1, values: [] }) {
     if (!isJsonObject(pCache))
       throw new TypeError(`Expected pCache to be a valid object, but got ${typeof pCache}`);
     if (!isJsonObject(group))
@@ -532,7 +532,7 @@ class PuddySqlTags {
    * @param {Pcache} [pCache={ index: 1, values: [] }] - Placeholder cache object
    * @returns {string} SQL WHERE clause string
    */
-  parseWhereFlat(group = {}, pCache = { index: 1, values: [] }) {
+  _parseWhereFlat(group = {}, pCache = { index: 1, values: [] }) {
     if (!isJsonObject(pCache))
       throw new TypeError(`Expected pCache to be a valid object, but got ${typeof pCache}`);
     if (!isJsonObject(group))

@@ -41,9 +41,12 @@ const db = new PuddySql.Instance();
     console.log(`\x1b[31m[EVENT] Migration-Error: ${JSON.stringify(err)}\x1b[0m`),
   );
 
-  db.migrator.addMigration(1, async (db) => {
-    // await db.run('ALTER TABLE users ADD COLUMN email TEXT');
-    console.log('   └─ [Migration 2] Column "email" added to "users".');
+  db.migrator.addMigration(1, async () => {
+    await users.updateTable([
+      ['ADD', 'email', 'TEXT'],
+      ['ADD', 'temp_col', 'TEXT'],
+      ['REMOVE', 'temp_col'],
+    ]);
   });
 
   db.migrator.addMigration(2, async () => {
@@ -324,9 +327,9 @@ const db = new PuddySql.Instance();
   const tagParse = tagManager.safeParseString(tagsList);
   console.log(tagParse);
   console.log('\n🔖 \x1b[34mParse JSON: JSON\x1b[0m\n');
-  console.log(tagManager.parseWhere(tagParse));
+  console.log(tagManager._parseWhere(tagParse));
   console.log('\n🔖 \x1b[34mParse Tags: Normal\x1b[0m\n');
-  console.log(tagManager.parseWhereFlat(tagParse));
+  console.log(tagManager._parseWhereFlat(tagParse));
 
   console.log('\n✅ \x1b[1;32mAll tag tests done.\x1b[0m');
   console.log('\n🎉 \x1b[1;32mDone. Everything looks delicious! 🍮\x1b[0m\n');

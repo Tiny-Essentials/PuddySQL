@@ -4,6 +4,25 @@ import PuddySqlTags from './PuddySqlTags.mjs';
 import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /**
+ * Extracts column names from the configuration and creates a complete object type.
+ * TypeScript maps each tuple [name, type, ...] to { name: any }.
+ * @template {SqlTableConfig} C
+ * @typedef {{ [K in C[number] as K[0]]: any }} TableRow
+ */
+
+/**
+ * Represents a partial table row, perfect for insertions and updates.
+ * @template {SqlTableConfig} C
+ * @typedef {Partial<TableRow<C>>} PartialRow
+ */
+
+/**
+ * Extracts only column names as a string union (e.g., "id" | "name").
+ * @template {SqlTableConfig} C
+ * @typedef {C[number][0]} ColumnNames
+ */
+
+/**
  * Defines the schema structure used to create or modify SQL tables programmatically.
  *
  * Each entry in the array represents a single column definition as a 4-item tuple:
@@ -14,18 +33,18 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  * - `columnOptions` (`string`) – SQL options like `NOT NULL`, `PRIMARY KEY`, `DEFAULT`, etc.
  * - `columnMeta` (`any`) – Arbitrary metadata related to the column (e.g., for UI, descriptions, tags).
  *
- * @typedef {Array<[string, string, string, string]>} SqlTableConfig
+ * @typedef {Array<[string, string, string, string]|[string, string, string]|[string, string]|[string]>} SqlTableConfig
  */
 
 /**
  * Represents the result of a paginated SQL query to locate the exact position of a specific item.
- *
+ * @template T
  * @typedef {Object} FindResult
  * @property {number} page - The current page number where the item is located (starting from 1).
  * @property {number} pages - The total number of pages available in the dataset.
  * @property {number} total - The total number of items in the dataset.
  * @property {number} position - The exact index position of the item in the entire dataset (starting from 0).
- * @property {FreeObj} [item] - The actual item found, if included in the result.
+ * @property {T} [item] - The actual item found, if included in the result.
  */
 
 /**
@@ -40,11 +59,11 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /**
  * Represents the result of a paginated query.
- *
+ * @template T
  * @typedef {Object} PaginationResult
- * @property {any[]} items - Array of items returned for the current page.
- * @property {number} totalPages - Total number of available pages based on the query and per-page limit.
- * @property {number} totalItems - Total number of items matching the query without pagination.
+ * @property {T[]} items - Array of items returned for the current page.
+ * @property {number} totalPages - Total number of available pages based on the query.
+ * @property {number} totalItems - Total number of items matching the query.
  */
 
 /**
@@ -197,6 +216,7 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /**
  * TinySQLQuery is a queries operating system developed to operate in a specific table.
+ * @template {SqlTableConfig} Config
  */
 class PuddySqlQuery {
   /** @type {SqlConditions} */
@@ -232,7 +252,7 @@ class PuddySqlQuery {
   /** @type {Record<string, PuddySqlTags>} */
   #tagColumns = {};
 
-  /** @type {SqlTableConfig} */
+  /** @type {Config} */
   #columns;
 
   /** @type {string} */
@@ -246,6 +266,11 @@ class PuddySqlQuery {
     return this.#db;
   }
 
+  /** @returns {Config} */
+  get columns() {
+    return structuredClone(this.#columns);
+  }
+
   /**
    * Creates a table in the database based on provided column definitions.
    * Also stores the column structure in this.#table as an object keyed by column name.
@@ -254,7 +279,7 @@ class PuddySqlQuery {
    * but the original "TAGS" value will be preserved in this.#table.
    * This function ensures safe fallback values and formats the SELECT clause.
    * @param {Object} config
-   * @param {SqlTableConfig} config.columns - An array of column definitions.
+   * @param {Config} config.columns - An array of column definitions.
    * @param {TableSettings} [config.settings={}] - Partial database settings to apply.
    * @param {PuddySqlEngine} [config.db] - PuddySql Instance.
    * Each column is defined by an array containing the column name, type, and optional configurations.
@@ -1149,7 +1174,7 @@ class PuddySqlQuery {
    *
    * @returns {Record<string, PuddySqlTags>} - All tag editor instances mapped by column name.
    */
-  getTagEditors() {
+  get tagColumns() {
     return { ...this.#tagColumns };
   }
 
@@ -1322,10 +1347,10 @@ class PuddySqlQuery {
    *
    * Supported types: BOOLEAN, INTEGER, BIGINT, FLOAT, TEXT, JSON, DATE, TIMESTAMP, etc.
    *
-   * @param {any} result - The result row to check.
-   * @returns {FreeObj}
+   * @param {TableRow<Config>} result - The result row to check.
+   * @returns {TableRow<Config>} The strongly-typed parsed row.
    */
-  resultChecker(result) {
+  _resultChecker(result) {
     if (!isJsonObject(result)) return result;
     for (const item in result) {
       const column = this.#table?.[item];
@@ -1333,6 +1358,7 @@ class PuddySqlQuery {
       const type = column.type ?? '';
       const raw = result[item];
       if (typeof this.#jsonEscapeAlias[type] === 'function')
+        // @ts-ignore
         result[item] = this.#jsonEscapeAlias[type](raw);
     }
 
@@ -1343,8 +1369,9 @@ class PuddySqlQuery {
    * Escapes values inside the valueObj using type definitions from this.#table.
    * Only modifies the values that have a matching column in the table.
    * Uses the appropriate parser from #jsonEscapeAlias.
-   * @param {FreeObj} valueObj - The object containing values to be escaped.
-   * @returns {FreeObj} The same valueObj with its values escaped according to table definitions.
+   * 
+   * @param {PartialRow<Config>} valueObj - The object containing values to be escaped.
+   * @returns {PartialRow<Config>} The same valueObj with its values escaped according to table definitions.
    */
   escapeValues(valueObj = {}) {
     for (const key in valueObj) {
@@ -1356,6 +1383,7 @@ class PuddySqlQuery {
         const escapeFn = this.#jsonEscapeAlias[type];
 
         if (typeof escapeFn === 'function') {
+          // @ts-ignore
           valueObj[key] = escapeFn.call(this, valueObj[key]);
         }
       }
@@ -1388,7 +1416,7 @@ class PuddySqlQuery {
    * - Fallback: `result.rowsAffected`, if defined
    *
    * @param {FreeObj|null} result - The result object returned by the database driver.
-   * @returns {number} The number of affected rows, or null if it can't be determined.
+   * @returns {number} The number of affected rows, or 0 if it can't be determined.
    */
   getResultCount(result) {
     const sqlEngine = this.#db.getSqlEngine();
@@ -1452,7 +1480,8 @@ class PuddySqlQuery {
   /**
    * Applies type-specific escaping to a single value based on the table's column definition.
    * @param {any} v - The raw value to be escaped.
-   * @param {string} name - The column name associated with the value.
+   * @param {ColumnNames<Config>} name - The exact column name associated with the value.
+   * 
    * @returns {any} The escaped value if a valid type and handler exist; otherwise, the original value.
    */
   escapeValuesFix(v, name) {
@@ -1470,7 +1499,7 @@ class PuddySqlQuery {
    * Instead of relying solely on an ID (or subId), this method uses parseWhere to
    * generate the conditions, and updates the given fields in valueObj.
    *
-   * @param {FreeObj} valueObj - An object representing the columns and new values for the update.
+   * @param {PartialRow<Config>} valueObj - An object representing the columns and new values for the update.
    * @param {QueryGroup} filter - An object containing the conditions for the WHERE clause.
    * @returns {Promise<number>} - Count of rows that were updated.
    */
@@ -1490,7 +1519,7 @@ class PuddySqlQuery {
     // Creates a parameter cache for WHERE.
     // The initial index should be equal to updateValues.length + 1 to maintain the correct sequence.
     const whereCache = { index: updateValues.length + 1, values: [] };
-    const whereClause = this.parseWhere(whereCache, filter);
+    const whereClause = this._parseWhere(whereCache, filter);
     if (!whereClause) {
       throw new Error('Empty WHERE clause — update aborted for safety');
     }
@@ -1506,9 +1535,10 @@ class PuddySqlQuery {
   /**
    * Update an existing record with given data.
    * Will not insert if the record doesn't exist.
+   *
    * @param {string|number} id - Primary key value.
-   * @param {FreeObj} valueObj - Data to update.
-   * @returns {Promise<number>} Count of rows were updated.
+   * @param {PartialRow<Config>} valueObj - Data to update mapped to the table schema.
+   * @returns {Promise<number>} Count of rows that were updated.
    */
   async update(id, valueObj = {}) {
     if (typeof id !== 'string' && typeof id !== 'number')
@@ -1523,6 +1553,7 @@ class PuddySqlQuery {
 
     const setClause = columns.map((col, index) => `${col} = $${index + 1}`).join(', ');
 
+    // @ts-ignore
     const useSub = this.#settings.subId && typeof valueObj[this.#settings.subId] !== 'undefined';
     const query = `UPDATE ${this.#settings.name} SET ${setClause} WHERE ${this.#settings.id} = $${columns.length + 1}${useSub ? ` AND ${this.#settings.subId} = $${columns.length + 2}` : ''}`;
 
@@ -1536,14 +1567,14 @@ class PuddySqlQuery {
 
   /**
    * Insert or update one or more records with given data.
+   *
+   * @template {PartialRow<Config> | PartialRow<Config>[]} TData
    * @param {string|number|Array<string|number>|null} id - Primary key value(s) for each record.
-   * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
+   * @param {TData} valueObj - A single object or an array of objects containing the data to store.
    * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
-   * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
-   * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
-   *                 or if objects in `valueObj` array have mismatched keys.
+   * @returns {Promise<TData|null>} - Generated values will be returned, or null if nothing was generated.
    */
-  async #set(id, valueObj = {}, onlyIfNew = false) {
+  async #set(id, valueObj, onlyIfNew = false) {
     // Validate 'onlyIfNew'
     if (typeof onlyIfNew !== 'boolean')
       throw new TypeError(`Expected 'onlyIfNew' to be a boolean, but got ${typeof onlyIfNew}`);
@@ -1587,7 +1618,9 @@ class PuddySqlQuery {
     } else {
       // Single ID mode
       if (id !== null && typeof id !== 'string' && typeof id !== 'number')
-        throw new TypeError(`Expected 'id' to be a string, number or null when using single value mode`);
+        throw new TypeError(
+          `Expected 'id' to be a string, number or null when using single value mode`,
+        );
     }
 
     // Prepare validator
@@ -1622,10 +1655,11 @@ class PuddySqlQuery {
     for (let i = 0; i < objects.length; i++) {
       const obj = objects[i];
       const rowId = isArray ? ids[i] : ids[0];
-      
-      const values = rowId !== null 
-        ? [rowId, ...columns.map((col) => this.escapeValuesFix(obj[col], col))]
-        : columns.map((col) => this.escapeValuesFix(obj[col], col));
+
+      const values =
+        rowId !== null
+          ? [rowId, ...columns.map((col) => this.escapeValuesFix(obj[col], col))]
+          : columns.map((col) => this.escapeValuesFix(obj[col], col));
 
       allParams.push(...values);
 
@@ -1680,23 +1714,22 @@ class PuddySqlQuery {
    * If `valueObj` is an array, `id` must also be an array of the same length.
    * All objects inside the array must have identical keys.
    *
+   * @template {PartialRow<Config> | PartialRow<Config>[]} TData
    * @param {string|number|Array<string|number>} id - Primary key value(s) for each record.
-   * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
+   * @param {TData} valueObj - A single object or an array of objects containing the data to store.
    * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
-   * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
-   * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
-   *                 or if objects in `valueObj` array have mismatched keys.
+   * @returns {Promise<TData|null>} - Generated values will be returned, or null if nothing was generated.
    */
   set(id, valueObj, onlyIfNew) {
     return this.#set(id, valueObj, onlyIfNew);
   }
 
   /**
-   * Add one record with given data.
+   * Add one or more records with given data.
    *
-   * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
-   * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
-   * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
+   * @template {PartialRow<Config> | PartialRow<Config>[]} TData
+   * @param {TData} valueObj - A single object or an array of objects containing the data to store.
+   * @returns {Promise<TData|null>} - Generated values will be returned, or null if nothing was generated.
    */
   add(valueObj) {
     return this.#set(null, valueObj, true);
@@ -1704,9 +1737,10 @@ class PuddySqlQuery {
 
   /**
    * Get a record by its ID (and optional subId).
+   *
    * @param {string|number} id - Primary key value.
    * @param {string|number} [subId] - Optional sub-ID for composite key.
-   * @returns {Promise<FreeObj|null>}
+   * @returns {Promise<TableRow<Config>|null>} The typed row matching the database schema.
    */
   async get(id, subId) {
     if (typeof id !== 'string' && typeof id !== 'number')
@@ -1720,10 +1754,11 @@ class PuddySqlQuery {
         : false;
     const params = [id];
     const query = `SELECT ${this.#settings.select} FROM ${this.#settings.name} t 
-                     ${this.insertJoin()} WHERE t.${this.#settings.id} = $1${useSub ? ` AND t.${this.#settings.subId} = $2` : ''}`;
+                     ${this._insertJoin()} WHERE t.${this.#settings.id} = $1${useSub ? ` AND t.${this.#settings.subId} = $2` : ''}`;
     // @ts-ignore
     if (useSub) params.push(subId);
-    const result = this.resultChecker(await this.#db.get(query, params, 'get'));
+    // @ts-ignore
+    const result = this._resultChecker(await this.#db.get(query, params, 'get'));
     if (!result) return null;
     return result;
   }
@@ -1743,7 +1778,7 @@ class PuddySqlQuery {
 
     /** @type {Pcache} */
     const pCache = { index: 1, values: [] };
-    const whereClause = this.parseWhere(pCache, filter);
+    const whereClause = this._parseWhere(pCache, filter);
     if (!whereClause) throw new Error('Empty WHERE clause — deletion aborted for safety');
 
     const query = `DELETE FROM ${this.#settings.name} WHERE ${whereClause}`;
@@ -1779,10 +1814,11 @@ class PuddySqlQuery {
   /**
    * Get a limited number of rows from the database.
    * If an ID is provided, returns only the matching record(s) up to the specified count.
+   *
    * @param {number} count - Number of rows to retrieve.
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected in the query.
-   * @returns {Promise<FreeObj[]>}
+   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAmount(count, filterId = null, selectValue = '*') {
     if (typeof count !== 'number')
@@ -1794,22 +1830,23 @@ class PuddySqlQuery {
     const whereClause = filterId !== null ? `WHERE t.${this.#settings.id} = $1` : '';
     const limitClause = `LIMIT $${filterId !== null ? 2 : 1}`;
     const query = `SELECT ${this.selectGenerator(selectValue)} FROM ${this.#settings.name} t 
-                   ${this.insertJoin()} 
+                   ${this._insertJoin()} 
                    ${whereClause}
                    ${orderClause} ${limitClause}`.trim();
 
     const params = filterId !== null ? [filterId, count] : [count];
     const results = await this.#db.all(query, params, 'getAmount');
-    for (const index in results) this.resultChecker(results[index]);
+    for (const index in results) this._resultChecker(results[index]);
     return results;
   }
 
   /**
    * Get all records from the table.
    * If an ID is provided, returns only the matching record(s).
+   *
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected in the query.
-   * @returns {Promise<FreeObj[]>}
+   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAll(filterId = null, selectValue = '*') {
     if (filterId !== null && typeof filterId !== 'string' && typeof filterId !== 'number')
@@ -1817,12 +1854,12 @@ class PuddySqlQuery {
     const orderClause = this.#settings.order ? `ORDER BY ${this.#settings.order}` : '';
     const whereClause = filterId !== null ? `WHERE t.${this.#settings.id} = $1` : '';
     const query = `SELECT ${this.selectGenerator(selectValue)} FROM ${this.#settings.name} t 
-                   ${this.insertJoin()} 
+                   ${this._insertJoin()} 
                    ${whereClause}
                    ${orderClause}`.trim();
 
     const results = await this.#db.all(query, filterId !== null ? [filterId] : [], 'getAll');
-    for (const index in results) this.resultChecker(results[index]);
+    for (const index in results) this._resultChecker(results[index]);
     return results;
   }
 
@@ -1834,7 +1871,7 @@ class PuddySqlQuery {
    * @param {number} perPage - The number of items per page.
    * @param {number} page - The current page number (starting from 1).
    * @param {string} queryName - The query name to insert into the sql debug.
-   * @returns {Promise<PaginationResult>}
+   * @returns {Promise<PaginationResult<PartialRow<Config>>>}
    */
   async execPagination(query, params, perPage, page, queryName = '') {
     if (typeof query !== 'string')
@@ -1873,7 +1910,7 @@ class PuddySqlQuery {
       : [];
 
     const totalPages = !isZero ? Math.ceil(total / perPage) : 0;
-    for (const index in items) this.resultChecker(items[index]);
+    for (const index in items) this._resultChecker(items[index]);
 
     return {
       items,
@@ -1900,7 +1937,7 @@ class PuddySqlQuery {
    *
    * @example
    * const pCache = { index: 1, values: [] };
-   * const clause = this.parseWhere(pCache, {
+   * const clause = this._parseWhere(pCache, {
    *   group: 'OR',
    *   conditions: [
    *     { column: 'status', value: 'active' },
@@ -1910,7 +1947,7 @@ class PuddySqlQuery {
    * // clause: "(status = $1) OR (role = $2)"
    * // pCache.values: ['active', 'admin']
    */
-  parseWhere(pCache = { index: 1, values: [] }, group = {}) {
+  _parseWhere(pCache = { index: 1, values: [] }, group = {}) {
     if (!isJsonObject(pCache) || !isJsonObject(group)) return '';
     if (typeof pCache.index !== 'number') pCache.index = 1;
     if (!Array.isArray(pCache.values)) pCache.values = [];
@@ -1919,7 +1956,7 @@ class PuddySqlQuery {
       const logic =
         typeof group.group === 'string' && group.group.toUpperCase() === 'OR' ? 'OR' : 'AND';
       const innerConditions = group.conditions.map((cond) => {
-        return `(${this.parseWhere(pCache, cond)})`;
+        return `(${this._parseWhere(pCache, cond)})`;
       });
       return innerConditions.join(` ${logic} `);
     }
@@ -1995,7 +2032,7 @@ class PuddySqlQuery {
    *
    * @returns {string} The default LEFT JOIN SQL snippet, or an empty string if no join is configured.
    */
-  insertJoin() {
+  _insertJoin() {
     return typeof this.#settings.join === 'string'
       ? `LEFT JOIN ${this.#settings.join} j ON ${this.#settings.joinCompare ?? ''}`
       : '';
@@ -2085,7 +2122,7 @@ class PuddySqlQuery {
    * @param {JoinObj|JoinObj[]|string|null} [join] - The join configuration(s).
    * @returns {string} One or more JOIN SQL snippets.
    */
-  parseJoin(join) {
+  _parseJoin(join) {
     /**
      * @param {JoinObj} j
      * @param {number} idx
@@ -2112,7 +2149,7 @@ class PuddySqlQuery {
         ? join.map(insertJoin).join(' ')
         : typeof join === 'string'
           ? join
-          : this.insertJoin();
+          : this._insertJoin();
   }
 
   /**
@@ -2131,9 +2168,8 @@ class PuddySqlQuery {
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
    * @returns {{ query: string; values: any[] | undefined; perPage: number; selectValue: SelectQuery; }}
-   * @throws {Error} If searchData has invalid structure or values.
    */
-  findQuery(searchData = {}) {
+  _findQuery(searchData = {}) {
     // --- Validate searchData types ---
     if (!isJsonObject(searchData)) throw new TypeError(`'searchData' must be a object`);
     const criteria = searchData.q ?? {};
@@ -2179,7 +2215,7 @@ class PuddySqlQuery {
 
     // Apply base criteria
     if (Object.keys(criteria).length) {
-      whereParts.push(this.parseWhere(pCache, criteria));
+      whereParts.push(this._parseWhere(pCache, criteria));
     }
 
     // Apply tagCriteria logic
@@ -2192,8 +2228,8 @@ class PuddySqlQuery {
 
         const tag = this.getTagEditor(group.column);
         const clause = !isFlatTags
-          ? tag.parseWhere(group, pCache)
-          : tag.parseWhereFlat(group, pCache);
+          ? tag._parseWhere(group, pCache)
+          : tag._parseWhereFlat(group, pCache);
         if (!clause) return;
 
         const op = i > 0 ? tagCriteriaOps[i - 1] || 'AND' : null;
@@ -2206,8 +2242,8 @@ class PuddySqlQuery {
 
       const tag = this.getTagEditor(tagCriteria.column);
       const clause = !isFlatTags
-        ? tag.parseWhere(tagCriteria, pCache)
-        : tag.parseWhereFlat(tagCriteria, pCache);
+        ? tag._parseWhere(tagCriteria, pCache)
+        : tag._parseWhereFlat(tagCriteria, pCache);
       if (clause) whereParts.push(clause);
     }
 
@@ -2223,7 +2259,7 @@ class PuddySqlQuery {
              ROW_NUMBER() OVER (${orderClause || 'ORDER BY (SELECT 1)'}) AS rn,
              COUNT(*) OVER () AS total
       FROM ${this.#settings.name} t
-      ${this.parseJoin(joinConfig)}
+      ${this._parseJoin(joinConfig)}
       ${whereClause}
     )
     SELECT *, rn AS position, CEIL(CAST(total AS FLOAT) / ${perPage}) AS pages
@@ -2248,11 +2284,10 @@ class PuddySqlQuery {
    * @param {SelectQuery} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
-   * @returns {Promise<FindResult | null>}
-   * @throws {Error} If searchData has invalid structure or values.
+   * @returns {Promise<FindResult<PartialRow<Config>> | null>}
    */
   async find(searchData = {}) {
-    const { query, values, perPage, selectValue } = this.findQuery(searchData);
+    const { query, values, perPage, selectValue } = this._findQuery(searchData);
 
     const row = await this.#db.get(query, values, 'find');
     if (!row) return null;
@@ -2262,7 +2297,7 @@ class PuddySqlQuery {
     const position = parseInt(row.position);
     const page = Math.floor((position - 1) / perPage) + 1;
 
-    /** @type {FindResult} */
+    /** @type {FindResult<PartialRow<Config>>} */
     const response = { page, pages, total, position };
 
     // If selectValue is NOT null, return the item
@@ -2272,7 +2307,9 @@ class PuddySqlQuery {
       delete row.pages;
       delete row.position;
 
-      this.resultChecker(row);
+      // @ts-ignore
+      this._resultChecker(row);
+      // @ts-ignore
       response.item = row;
     }
 
@@ -2300,8 +2337,6 @@ class PuddySqlQuery {
    *        Each object should contain `{ table: 'name', compare: 'ON clause' }`.
    * @param {number} [searchData.limit] - Max number of results to return (ignored when `perPage` is used).
    * @returns {{ query: string; perPage: number | null; values: any[]; page: number; }}
-   * @throws {Error} If searchData has invalid structure or values.
-   *
    * @example
    * // Flat search:
    * await table.search({ q: { status: { value: 'active' } } });
@@ -2336,7 +2371,7 @@ class PuddySqlQuery {
    *   order: 'created_at DESC'
    * });
    */
-  searchQuery(searchData = {}) {
+  _searchQuery(searchData = {}) {
     if (!isJsonObject(searchData)) throw new TypeError(`'searchData' must be a object`);
     const order = searchData.order ?? this.#settings.order;
     const join = searchData.join ?? this.#settings.join;
@@ -2398,7 +2433,7 @@ class PuddySqlQuery {
     const whereParts = [];
 
     if (Object.keys(criteria).length) {
-      whereParts.push(this.parseWhere(pCache, criteria));
+      whereParts.push(this._parseWhere(pCache, criteria));
     }
 
     if (Array.isArray(tagCriteria)) {
@@ -2410,8 +2445,8 @@ class PuddySqlQuery {
 
         const tag = this.getTagEditor(group.column);
         const clause = !isFlatTags
-          ? tag.parseWhere(group, pCache)
-          : tag.parseWhereFlat(group, pCache);
+          ? tag._parseWhere(group, pCache)
+          : tag._parseWhereFlat(group, pCache);
         if (!clause) return;
 
         const op = i > 0 ? operators[i - 1] || 'AND' : null;
@@ -2421,8 +2456,8 @@ class PuddySqlQuery {
     } else if (isJsonObject(tagCriteria) && typeof tagCriteria.column === 'string') {
       const tag = this.getTagEditor(tagCriteria.column);
       const clause = !isFlatTags
-        ? tag.parseWhere(tagCriteria, pCache)
-        : tag.parseWhereFlat(tagCriteria, pCache);
+        ? tag._parseWhere(tagCriteria, pCache)
+        : tag._parseWhereFlat(tagCriteria, pCache);
       if (clause) whereParts.push(clause);
     }
 
@@ -2439,7 +2474,7 @@ class PuddySqlQuery {
 
     // Query
     const query = `SELECT ${this.selectGenerator(selectValue)} FROM ${this.#settings.name} t 
-                       ${this.parseJoin(join)} 
+                       ${this._parseJoin(join)} 
                        ${whereClause} 
                        ${orderClause} 
                        ${limitClause}`.trim();
@@ -2465,11 +2500,10 @@ class PuddySqlQuery {
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - A string for single join or array of objects for multiple joins.
    *        Each object should contain `{ table: 'name', compare: 'ON clause' }`.
    * @param {number} [searchData.limit] - Max number of results to return (ignored when `perPage` is used).
-   * @returns {Promise<FreeObj[]|PaginationResult>} - Result rows matching the query.
-   * @throws {Error} If searchData has invalid structure or values.
+   * @returns {Promise<PartialRow<Config>[]|PaginationResult<PartialRow<Config>>>} - Result rows matching the query.
    */
   async search(searchData = {}) {
-    const { query, values, perPage, page } = this.searchQuery(searchData);
+    const { query, values, perPage, page } = this._searchQuery(searchData);
 
     // Results
     let results;
@@ -2480,7 +2514,7 @@ class PuddySqlQuery {
     // Normal
     else {
       results = await this.#db.all(query, values, 'search');
-      for (const index in results) this.resultChecker(results[index]);
+      for (const index in results) this._resultChecker(results[index]);
     }
 
     // Complete
