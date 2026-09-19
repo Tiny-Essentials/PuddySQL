@@ -205,8 +205,8 @@ class PuddySqlQuery {
   /** @type {Record<string, function(string) : string>} */
   #customValFunc = {};
 
-  /** @type {PuddySqlEngine|null} */
-  #db = null;
+  /** @type {PuddySqlEngine} */
+  #db;
 
   /**
    * @type {Settings}
@@ -227,31 +227,171 @@ class PuddySqlQuery {
    *  options: string|null,
    * }>}
    */
-  #table = {};
+  #table;
 
   /** @type {Record<string, PuddySqlTags>} */
   #tagColumns = {};
 
+  /** @type {SqlTableConfig} */
+  #columns;
+
+  /** @type {string} */
+  #columnsQuery;
+
   /**
    * Safely retrieves the internal database instance.
-   *
-   * This method ensures that the current internal `#db` is a valid instance of `PuddySqlEngine`.
-   * If the internal value is invalid or was not properly initialized, an error is thrown.
-   *
    * @returns {PuddySqlEngine} The internal database instance.
-   * @throws {Error} If the internal database is not a valid `PuddySqlEngine`.
    */
-  getDb() {
-    // @ts-ignore
-    if (this.#db === null || !(this.#db instanceof PuddySqlEngine)) {
-      throw new Error(
-        'Database instance is invalid or uninitialized. Expected an instance of PuddySqlEngine.',
-      );
-    }
+  get db() {
     return this.#db;
   }
 
-  constructor() {
+  /**
+   * Creates a table in the database based on provided column definitions.
+   * Also stores the column structure in this.#table as an object keyed by column name.
+   * If a column type is "TAGS", it will be replaced with "JSON" for SQL purposes,
+   * and registered in #tagColumns using a PuddySqlTags instance,
+   * but the original "TAGS" value will be preserved in this.#table.
+   * This function ensures safe fallback values and formats the SELECT clause.
+   * @param {Object} config
+   * @param {SqlTableConfig} config.columns - An array of column definitions.
+   * @param {TableSettings} [config.settings={}] - Partial database settings to apply.
+   * @param {PuddySqlEngine} [config.db] - PuddySql Instance.
+   * Each column is defined by an array containing the column name, type, and optional configurations.
+   */
+  constructor({ columns, db, settings }) {
+    if (!Array.isArray(columns))
+      throw new TypeError(`Expected columns to be an array. Got: ${typeof columns}`);
+
+    if (!isJsonObject(settings)) throw new TypeError('Settings must be a plain object.');
+    if (!(db instanceof PuddySqlEngine))
+      throw new Error('Invalid type for db. Expected a PuddySql.');
+
+    const tableName = settings?.name;
+    if (!tableName || typeof tableName !== 'string')
+      throw new Error('Table name not defined in this.#settings.name');
+
+    this.#db = db;
+
+    const selectValue =
+      typeof settings.select !== 'undefined'
+        ? this.selectGenerator(settings.select)
+        : this.#settings?.select || '*';
+
+    /** @type {Settings} */
+    const newSettings = {
+      ...this.#settings,
+      ...settings,
+      select: '',
+    };
+
+    newSettings.select = selectValue;
+
+    if (typeof newSettings.join !== 'string') newSettings.join = null;
+    if (typeof newSettings.joinCompare !== 'string' && newSettings.join)
+      newSettings.joinCompare = 't.key = j.key';
+    if (typeof newSettings.order !== 'string') newSettings.order = null;
+    if (typeof newSettings.id !== 'string') newSettings.id = 'key';
+    if (typeof newSettings.subId !== 'string') newSettings.subId = null;
+
+    this.#settings = newSettings;
+
+    // Start building the query
+    this.#columnsQuery = `CREATE TABLE IF NOT EXISTS ${tableName} (`;
+
+    // Internal processing for SQL only (preserve original for #table)
+    const sqlColumns = columns.map((column, i) => {
+      if (!Array.isArray(column))
+        throw new TypeError(
+          `Column definition at index ${i} must be an array. Got: ${typeof column}`,
+        );
+
+      const col = [...column]; // shallow clone to avoid mutating original
+
+      // Prepare to detect custom column type
+      if (col.length >= 2 && typeof col[1] === 'string') {
+        const [name, type] = col;
+        if (typeof name !== 'string')
+          throw new TypeError(`Expected 'name' to be string in index "${i}", got ${typeof name}`);
+        if (typeof type !== 'string')
+          throw new TypeError(`Expected 'type' to be string in index "${i}", got ${typeof type}`);
+        // Tags
+        if (type.toUpperCase() === 'TAGS') {
+          col[1] = 'JSON';
+          this.#tagColumns[name] = new PuddySqlTags(name);
+          this.#tagColumns[name].setIsPgMode(this.#db.getSqlEngine() === 'postgre');
+        }
+      }
+
+      // If the column definition contains more than two items, it's a full definition
+      if (col.length === 3) {
+        if (typeof col[0] !== 'string')
+          throw new TypeError(
+            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
+          );
+        if (typeof col[1] !== 'string')
+          throw new TypeError(
+            `Expected 'col[1]' to be string in index "${i}", got ${typeof col[1]}`,
+          );
+        if (typeof col[2] !== 'string')
+          throw new TypeError(
+            `Expected 'col[2]' to be string in index "${i}", got ${typeof col[2]}`,
+          );
+        return `${col[0]} ${col[1]} ${col[2]}`;
+      }
+      // If only two items are provided, it's just the name and type (no additional configuration)
+      else if (col.length === 2) {
+        if (typeof col[0] !== 'string')
+          throw new TypeError(
+            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
+          );
+        if (typeof col[1] !== 'string')
+          throw new TypeError(
+            `Expected 'col[1]' to be string in index "${i}", got ${typeof col[1]}`,
+          );
+        return `${col[0]} ${col[1]}`;
+      }
+      // If only one item is provided, it's a table setting (e.g., PRIMARY KEY)
+      else if (col.length === 1) {
+        if (typeof col[0] !== 'string')
+          throw new TypeError(
+            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
+          );
+        return col[0];
+      }
+
+      throw new TypeError(`Invalid column definition at index ${i}: ${JSON.stringify(col)}`);
+    });
+
+    // Join all column definitions into a single string
+    this.#columnsQuery += sqlColumns.join(', ') + ')';
+
+    // Save the table structure using an object with column names as keys
+    this.#table = {};
+    for (const i in columns) {
+      const column = columns[i];
+      if (column.length >= 2) {
+        const [name, type, options] = column;
+        if (typeof name !== 'string')
+          throw new TypeError(
+            `Invalid name of column definition at index ${i}: ${JSON.stringify(column)}`,
+          );
+        if (typeof type !== 'undefined' && typeof type !== 'string')
+          throw new TypeError(
+            `Invalid type of column definition at index ${i}: ${JSON.stringify(column)}`,
+          );
+        if (typeof options !== 'undefined' && typeof options !== 'string')
+          throw new TypeError(
+            `Invalid options of column definition at index ${i}: ${JSON.stringify(column)}`,
+          );
+        this.#table[name] = {
+          type: typeof type === 'string' ? type.toUpperCase().trim() : null,
+          options: typeof options === 'string' ? options.toUpperCase().trim() : null,
+        };
+      }
+    }
+
+    this.#columns = columns;
     // Predefined condition operator mappings used in searches
     this.addCondition('LIKE', (condition) => ({
       operator: 'LIKE',
@@ -856,8 +996,6 @@ class PuddySqlQuery {
    * @throws {Error} If any change has missing or invalid parameters.
    */
   async updateTable(changes) {
-    const db = this.getDb();
-
     if (!Array.isArray(changes))
       throw new TypeError(`Expected 'changes' to be an array of arrays. Got: ${typeof changes}`);
 
@@ -881,7 +1019,7 @@ class PuddySqlQuery {
 
           const query = `ALTER TABLE ${tableName} ADD COLUMN ${colName} ${colType} ${colOptions}`;
           try {
-            await db.run(query, undefined, 'updateTable - ADD');
+            await this.#db.run(query, undefined, 'updateTable - ADD');
           } catch (err) {
             console.error('[sql] [updateTable - ADD] Error adding column:', err);
           }
@@ -895,7 +1033,7 @@ class PuddySqlQuery {
 
           const query = `ALTER TABLE ${tableName} DROP COLUMN IF EXISTS ${colName}`;
           try {
-            await db.run(query, undefined, 'updateTable - REMOVE');
+            await this.#db.run(query, undefined, 'updateTable - REMOVE');
           } catch (err) {
             console.error('[sql] [updateTable - REMOVE] Error removing column:', err);
           }
@@ -915,7 +1053,7 @@ class PuddySqlQuery {
             newOptions ? `, ALTER COLUMN ${colName} SET ${newOptions}` : ''
           }`;
           try {
-            await db.run(query, undefined, 'updateTable - MODIFY');
+            await this.#db.run(query, undefined, 'updateTable - MODIFY');
           } catch (err) {
             console.error('[sql] [updateTable - MODIFY] Error modifying column:', err);
           }
@@ -929,7 +1067,7 @@ class PuddySqlQuery {
 
           const query = `ALTER TABLE ${tableName} RENAME COLUMN ${oldName} TO ${newName}`;
           try {
-            await db.run(query, undefined, 'updateTable - RENAME');
+            await this.#db.run(query, undefined, 'updateTable - RENAME');
           } catch (err) {
             console.error('[sql] [updateTable - RENAME] Error renaming column:', err);
           }
@@ -955,13 +1093,13 @@ class PuddySqlQuery {
    * @throws {Error} If there is an issue with the database or settings, or if the table can't be dropped.
    */
   async dropTable() {
-    const db = this.getDb();
     return new Promise((resolve, reject) => {
       const query = `DROP TABLE ${this.#settings.name};`;
-      db.run(query, undefined, 'dropTable')
+      this.#db
+        .run(query, undefined, 'dropTable')
         .then(() => resolve(true))
         .catch((err) => {
-          if (db.isConnectionError(err))
+          if (this.#db.isConnectionError(err))
             reject(err); // Rejects on connection-related errors
           else resolve(false); // Resolves with false on other errors
         });
@@ -969,124 +1107,15 @@ class PuddySqlQuery {
   }
 
   /**
-   * Creates a table in the database based on provided column definitions.
-   * Also stores the column structure in this.#table as an object keyed by column name.
-   * If a column type is "TAGS", it will be replaced with "JSON" for SQL purposes,
-   * and registered in #tagColumns using a PuddySqlTags instance,
-   * but the original "TAGS" value will be preserved in this.#table.
-   * @param {SqlTableConfig} columns - An array of column definitions.
-   * Each column is defined by an array containing the column name, type, and optional configurations.
+   * Starts the table instance.
    * @returns {Promise<void>}
    *
    * @throws {TypeError} If any column definition is malformed.
    * @throws {Error} If table name is not defined in settings.
    */
-  async createTable(columns) {
-    const db = this.getDb();
-    const tableName = this.#settings?.name;
-    if (!tableName || typeof tableName !== 'string')
-      throw new Error('Table name not defined in this.#settings.name');
-
-    if (!Array.isArray(columns))
-      throw new TypeError(`Expected columns to be an array. Got: ${typeof columns}`);
-
-    // Start building the query
-    let query = `CREATE TABLE IF NOT EXISTS ${tableName} (`;
-
-    // Internal processing for SQL only (preserve original for #table)
-    const sqlColumns = columns.map((column, i) => {
-      if (!Array.isArray(column))
-        throw new TypeError(
-          `Column definition at index ${i} must be an array. Got: ${typeof column}`,
-        );
-
-      const col = [...column]; // shallow clone to avoid mutating original
-
-      // Prepare to detect custom column type
-      if (col.length >= 2 && typeof col[1] === 'string') {
-        const [name, type] = col;
-        if (typeof name !== 'string')
-          throw new TypeError(`Expected 'name' to be string in index "${i}", got ${typeof name}`);
-        if (typeof type !== 'string')
-          throw new TypeError(`Expected 'type' to be string in index "${i}", got ${typeof type}`);
-        // Tags
-        if (type.toUpperCase() === 'TAGS') {
-          col[1] = 'JSON';
-          this.#tagColumns[name] = new PuddySqlTags(name);
-          this.#tagColumns[name].setIsPgMode(db.getSqlEngine() === 'postgre');
-        }
-      }
-
-      // If the column definition contains more than two items, it's a full definition
-      if (col.length === 3) {
-        if (typeof col[0] !== 'string')
-          throw new TypeError(
-            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
-          );
-        if (typeof col[1] !== 'string')
-          throw new TypeError(
-            `Expected 'col[1]' to be string in index "${i}", got ${typeof col[1]}`,
-          );
-        if (typeof col[2] !== 'string')
-          throw new TypeError(
-            `Expected 'col[2]' to be string in index "${i}", got ${typeof col[2]}`,
-          );
-        return `${col[0]} ${col[1]} ${col[2]}`;
-      }
-      // If only two items are provided, it's just the name and type (no additional configuration)
-      else if (col.length === 2) {
-        if (typeof col[0] !== 'string')
-          throw new TypeError(
-            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
-          );
-        if (typeof col[1] !== 'string')
-          throw new TypeError(
-            `Expected 'col[1]' to be string in index "${i}", got ${typeof col[1]}`,
-          );
-        return `${col[0]} ${col[1]}`;
-      }
-      // If only one item is provided, it's a table setting (e.g., PRIMARY KEY)
-      else if (col.length === 1) {
-        if (typeof col[0] !== 'string')
-          throw new TypeError(
-            `Expected 'col[0]' to be string in index "${i}", got ${typeof col[0]}`,
-          );
-        return col[0];
-      }
-
-      throw new TypeError(`Invalid column definition at index ${i}: ${JSON.stringify(col)}`);
-    });
-
-    // Join all column definitions into a single string
-    query += sqlColumns.join(', ') + ')';
-
+  async initTable() {
     // Execute the SQL query to create the table using db.run
-    await db.run(query, undefined, 'createTable');
-
-    // Save the table structure using an object with column names as keys
-    this.#table = {};
-    for (const i in columns) {
-      const column = columns[i];
-      if (column.length >= 2) {
-        const [name, type, options] = column;
-        if (typeof name !== 'string')
-          throw new TypeError(
-            `Invalid name of column definition at index ${i}: ${JSON.stringify(column)}`,
-          );
-        if (typeof type !== 'undefined' && typeof type !== 'string')
-          throw new TypeError(
-            `Invalid type of column definition at index ${i}: ${JSON.stringify(column)}`,
-          );
-        if (typeof options !== 'undefined' && typeof options !== 'string')
-          throw new TypeError(
-            `Invalid options of column definition at index ${i}: ${JSON.stringify(column)}`,
-          );
-        this.#table[name] = {
-          type: typeof type === 'string' ? type.toUpperCase().trim() : null,
-          options: typeof options === 'string' ? options.toUpperCase().trim() : null,
-        };
-      }
-    }
+    await this.#db.run(this.#columnsQuery, undefined, 'initTable');
   }
 
   /**
@@ -1336,43 +1365,6 @@ class PuddySqlQuery {
   }
 
   /**
-   * Set or update database settings by merging with existing ones.
-   * This function ensures safe fallback values and formats the SELECT clause.
-   *
-   * @param {TableSettings} [settings={}] - Partial configuration to apply. Will be merged with current settings.
-   * @param {PuddySqlEngine} [db] - PuddySql Instance.
-   */
-  setDb(settings = {}, db) {
-    if (!isJsonObject(settings)) throw new TypeError('Settings must be a plain object.');
-    if (!(db instanceof PuddySqlEngine))
-      throw new Error('Invalid type for db. Expected a PuddySql.');
-    this.#db = db;
-
-    const selectValue =
-      typeof settings.select !== 'undefined'
-        ? this.selectGenerator(settings.select)
-        : this.#settings?.select || '*';
-
-    /** @type {Settings} */
-    const newSettings = {
-      ...this.#settings,
-      ...settings,
-      select: '',
-    };
-
-    newSettings.select = selectValue;
-
-    if (typeof newSettings.join !== 'string') newSettings.join = null;
-    if (typeof newSettings.joinCompare !== 'string' && newSettings.join)
-      newSettings.joinCompare = 't.key = j.key';
-    if (typeof newSettings.order !== 'string') newSettings.order = null;
-    if (typeof newSettings.id !== 'string') newSettings.id = 'key';
-    if (typeof newSettings.subId !== 'string') newSettings.subId = null;
-
-    this.#settings = newSettings;
-  }
-
-  /**
    * Maps database engines to the corresponding property used
    * to check the number of affected rows after a write operation.
    *
@@ -1399,7 +1391,7 @@ class PuddySqlQuery {
    * @returns {number} The number of affected rows, or null if it can't be determined.
    */
   getResultCount(result) {
-    const sqlEngine = this.getDb().getSqlEngine();
+    const sqlEngine = this.#db.getSqlEngine();
     if (isJsonObject(result))
       return sqlEngine.length > 0 && typeof result[this.#resultCounts[sqlEngine]] === 'number'
         ? // @ts-ignore
@@ -1424,7 +1416,6 @@ class PuddySqlQuery {
     if (!this.#settings?.name || !this.#settings?.id)
       throw new Error('Invalid table settings: name and id must be defined.');
 
-    const db = this.getDb();
     const useSub =
       this.#settings.subId && (typeof subId === 'string' || typeof subId === 'number')
         ? true
@@ -1434,7 +1425,7 @@ class PuddySqlQuery {
     // @ts-ignore
     if (useSub) params.push(subId);
 
-    const result = await db.get(query, params, 'has');
+    const result = await this.#db.get(query, params, 'has');
     return isJsonObject(result) && result['COUNT(*)'] === 1 ? true : false;
   }
 
@@ -1484,7 +1475,6 @@ class PuddySqlQuery {
    * @returns {Promise<number>} - Count of rows that were updated.
    */
   async advancedUpdate(valueObj = {}, filter = {}) {
-    const db = this.getDb();
     // Validate parameters
     if (!isJsonObject(filter)) throw new Error('Invalid filter object for advancedUpdate');
     if (!isJsonObject(valueObj) || Object.keys(valueObj).length === 0)
@@ -1509,7 +1499,7 @@ class PuddySqlQuery {
     const query = `UPDATE ${this.#settings.name} SET ${setClause} WHERE ${whereClause}`;
     const params = [...updateValues, ...whereCache.values];
 
-    const result = await db.run(query, params, 'advancedUpdate');
+    const result = await this.#db.run(query, params, 'advancedUpdate');
     return this.getResultCount(result);
   }
 
@@ -1521,7 +1511,6 @@ class PuddySqlQuery {
    * @returns {Promise<number>} Count of rows were updated.
    */
   async update(id, valueObj = {}) {
-    const db = this.getDb();
     if (typeof id !== 'string' && typeof id !== 'number')
       throw new TypeError(`Expected 'id' to be string or number, got ${typeof id}`);
     if (!isJsonObject(valueObj) || Object.keys(valueObj).length === 0)
@@ -1541,28 +1530,20 @@ class PuddySqlQuery {
     // @ts-ignore
     if (useSub) params.push(valueObj[this.#settings.subId]);
 
-    const result = await db.run(query, params, 'update');
+    const result = await this.#db.run(query, params, 'update');
     return this.getResultCount(result);
   }
 
   /**
    * Insert or update one or more records with given data.
-   *
-   * ⚠️ **Important:** The table must have both `id` and `subId` configured as a composite **PRIMARY KEY**
-   * (or as a **UNIQUE constraint**) for the upsert operation to work correctly with conflict resolution.
-   *
-   * If `valueObj` is an array, `id` must also be an array of the same length.
-   * All objects inside the array must have identical keys.
-   *
-   * @param {string|number|Array<string|number>} id - Primary key value(s) for each record.
+   * @param {string|number|Array<string|number>|null} id - Primary key value(s) for each record.
    * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
    * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
    * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
    * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
    *                 or if objects in `valueObj` array have mismatched keys.
    */
-  async set(id, valueObj = {}, onlyIfNew = false) {
-    const db = this.getDb();
+  async #set(id, valueObj = {}, onlyIfNew = false) {
     // Validate 'onlyIfNew'
     if (typeof onlyIfNew !== 'boolean')
       throw new TypeError(`Expected 'onlyIfNew' to be a boolean, but got ${typeof onlyIfNew}`);
@@ -1677,9 +1658,29 @@ class PuddySqlQuery {
 
     // Complete!
     const result = await (isArray
-      ? db.all(query, allParams, 'multi-set')
-      : db.get(query, allParams, 'set'));
+      ? this.#db.all(query, allParams, 'multi-set')
+      : this.#db.get(query, allParams, 'set'));
     return result || null;
+  }
+
+  /**
+   * Insert or update one or more records with given data.
+   *
+   * ⚠️ **Important:** The table must have both `id` and `subId` configured as a composite **PRIMARY KEY**
+   * (or as a **UNIQUE constraint**) for the upsert operation to work correctly with conflict resolution.
+   *
+   * If `valueObj` is an array, `id` must also be an array of the same length.
+   * All objects inside the array must have identical keys.
+   *
+   * @param {string|number|Array<string|number>} id - Primary key value(s) for each record.
+   * @param {FreeObj|FreeObj[]} valueObj - A single object or an array of objects containing the data to store.
+   * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
+   * @returns {Promise<FreeObj|FreeObj[]|null>} - Generated values will be returned, or null if nothing was generated.
+   * @throws {Error} If `valueObj` is an array and `id` is not an array of the same length,
+   *                 or if objects in `valueObj` array have mismatched keys.
+   */
+  set(id, valueObj, onlyIfNew) {
+    return this.#set(id, valueObj, onlyIfNew);
   }
 
   /**
@@ -1694,7 +1695,6 @@ class PuddySqlQuery {
     if (typeof subId !== 'undefined' && typeof subId !== 'string' && typeof subId !== 'number')
       throw new TypeError(`Expected 'subId' to be string or number, got ${typeof subId}`);
 
-    const db = this.getDb();
     const useSub =
       this.#settings.subId && (typeof subId === 'string' || typeof subId === 'number')
         ? true
@@ -1704,7 +1704,7 @@ class PuddySqlQuery {
                      ${this.insertJoin()} WHERE t.${this.#settings.id} = $1${useSub ? ` AND t.${this.#settings.subId} = $2` : ''}`;
     // @ts-ignore
     if (useSub) params.push(subId);
-    const result = this.resultChecker(await db.get(query, params, 'get'));
+    const result = this.resultChecker(await this.#db.get(query, params, 'get'));
     if (!result) return null;
     return result;
   }
@@ -1718,7 +1718,6 @@ class PuddySqlQuery {
    * @returns {Promise<number>} - Number of rows deleted.
    */
   async advancedDelete(filter = {}) {
-    const db = this.getDb();
     if (!isJsonObject(filter)) {
       throw new Error('Invalid filter object for advancedDelete');
     }
@@ -1729,7 +1728,7 @@ class PuddySqlQuery {
     if (!whereClause) throw new Error('Empty WHERE clause — deletion aborted for safety');
 
     const query = `DELETE FROM ${this.#settings.name} WHERE ${whereClause}`;
-    const result = await db.run(query, pCache.values, 'advancedDelete');
+    const result = await this.#db.run(query, pCache.values, 'advancedDelete');
     return this.getResultCount(result);
   }
 
@@ -1745,7 +1744,6 @@ class PuddySqlQuery {
     if (typeof subId !== 'undefined' && typeof subId !== 'string' && typeof subId !== 'number')
       throw new TypeError(`Expected 'subId' to be string or number, got ${typeof subId}`);
 
-    const db = this.getDb();
     const useSub =
       this.#settings.subId && (typeof subId === 'string' || typeof subId === 'number')
         ? true
@@ -1755,7 +1753,7 @@ class PuddySqlQuery {
     // @ts-ignore
     if (useSub) params.push(subId);
 
-    const result = await db.run(query, params, 'delete');
+    const result = await this.#db.run(query, params, 'delete');
     return this.getResultCount(result);
   }
 
@@ -1768,7 +1766,6 @@ class PuddySqlQuery {
    * @returns {Promise<FreeObj[]>}
    */
   async getAmount(count, filterId = null, selectValue = '*') {
-    const db = this.getDb();
     if (typeof count !== 'number')
       throw new TypeError(`Expected 'count' to be number, got ${typeof count}`);
     if (filterId !== null && typeof filterId !== 'string' && typeof filterId !== 'number')
@@ -1783,7 +1780,7 @@ class PuddySqlQuery {
                    ${orderClause} ${limitClause}`.trim();
 
     const params = filterId !== null ? [filterId, count] : [count];
-    const results = await db.all(query, params, 'getAmount');
+    const results = await this.#db.all(query, params, 'getAmount');
     for (const index in results) this.resultChecker(results[index]);
     return results;
   }
@@ -1798,7 +1795,6 @@ class PuddySqlQuery {
   async getAll(filterId = null, selectValue = '*') {
     if (filterId !== null && typeof filterId !== 'string' && typeof filterId !== 'number')
       throw new TypeError(`Expected 'filterId' to be string or number, got ${typeof filterId}`);
-    const db = this.getDb();
     const orderClause = this.#settings.order ? `ORDER BY ${this.#settings.order}` : '';
     const whereClause = filterId !== null ? `WHERE t.${this.#settings.id} = $1` : '';
     const query = `SELECT ${this.selectGenerator(selectValue)} FROM ${this.#settings.name} t 
@@ -1806,7 +1802,7 @@ class PuddySqlQuery {
                    ${whereClause}
                    ${orderClause}`.trim();
 
-    const results = await db.all(query, filterId !== null ? [filterId] : [], 'getAll');
+    const results = await this.#db.all(query, filterId !== null ? [filterId] : [], 'getAll');
     for (const index in results) this.resultChecker(results[index]);
     return results;
   }
@@ -1833,14 +1829,13 @@ class PuddySqlQuery {
     if (typeof queryName !== 'string')
       throw new TypeError(`Expected 'queryName' to be a string, got ${typeof queryName}`);
 
-    const db = this.getDb();
     const offset = (page - 1) * perPage;
     const isZero = perPage < 1;
 
     // Count total items
     const countQuery = `SELECT COUNT(*) as total FROM (${query}) AS count_wrapper`;
     const countResult = !isZero
-      ? await db.get(countQuery, params, `pagination-${queryName}`)
+      ? await this.#db.get(countQuery, params, `pagination-${queryName}`)
       : { total: 0 };
 
     const total = isJsonObject(countResult)
@@ -1855,7 +1850,7 @@ class PuddySqlQuery {
     // Fetch paginated items
     const paginatedQuery = `${query} LIMIT ? OFFSET ?`;
     const items = !isZero
-      ? await db.all(paginatedQuery, [...params, perPage, offset], `pagination-${queryName}`)
+      ? await this.#db.all(paginatedQuery, [...params, perPage, offset], `pagination-${queryName}`)
       : [];
 
     const totalPages = !isZero ? Math.ceil(total / perPage) : 0;
@@ -2238,10 +2233,9 @@ class PuddySqlQuery {
    * @throws {Error} If searchData has invalid structure or values.
    */
   async find(searchData = {}) {
-    const db = this.getDb();
     const { query, values, perPage, selectValue } = this.findQuery(searchData);
 
-    const row = await db.get(query, values, 'find');
+    const row = await this.#db.get(query, values, 'find');
     if (!row) return null;
 
     const total = parseInt(row.total);
@@ -2456,7 +2450,6 @@ class PuddySqlQuery {
    * @throws {Error} If searchData has invalid structure or values.
    */
   async search(searchData = {}) {
-    const db = this.getDb();
     const { query, values, perPage, page } = this.searchQuery(searchData);
 
     // Results
@@ -2467,7 +2460,7 @@ class PuddySqlQuery {
       results = await this.execPagination(query, values, perPage, page, 'search');
     // Normal
     else {
-      results = await db.all(query, values, 'search');
+      results = await this.#db.all(query, values, 'search');
       for (const index in results) this.resultChecker(results[index]);
     }
 

@@ -254,9 +254,8 @@ class PuddySqlInstance extends PuddySqlEngine {
     if (!isJsonObject(settings)) throw new TypeError('settings must be a plain object');
     if (typeof settings.name !== 'string') throw new TypeError('settings.name must be a string');
     if (!this.#tables[settings.name]) {
-      const newTable = new PuddySqlQuery();
-      newTable.setDb(settings, this);
-      await newTable.createTable(tableData);
+      const newTable = new PuddySqlQuery({ columns: tableData, settings, db: this });
+      await newTable.initTable();
 
       this.#tables[settings.name] = newTable;
       return this.#tables[settings.name];
