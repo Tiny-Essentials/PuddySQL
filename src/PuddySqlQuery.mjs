@@ -4,8 +4,8 @@ import PuddySqlTags from './PuddySqlTags.mjs';
 import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /**
- * Mapeador avançado que converte strings de tipos SQL em tipos nativos do TypeScript.
- * Ele recebe o nome do tipo SQL e infere o tipo JS correspondente.
+ * Advanced mapper that converts SQL type strings into native TypeScript types.
+ * It receives the SQL type name and infers the corresponding JS type..
  * @template {string} T
  * @typedef {Uppercase<T> extends 'BOOLEAN' | 'BOOL' ? boolean : Uppercase<T> extends 'BIGINT' ? bigint : Uppercase<T> extends 'INTEGER' | 'INT' | 'SMALLINT' | 'TINYINT' | 'REAL' | 'FLOAT' | 'DOUBLE' | 'DECIMAL' | 'NUMERIC' ? number : Uppercase<T> extends 'JSON' ? Record<any, any> : Uppercase<T> extends 'TAGS' ? string[] : Uppercase<T> extends 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' ? Date | string | number : string} MapSqlType
  */
