@@ -4,22 +4,37 @@ import PuddySqlTags from './PuddySqlTags.mjs';
 import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /**
+ * Mapeador avançado que converte strings de tipos SQL em tipos nativos do TypeScript.
+ * Ele recebe o nome do tipo SQL e infere o tipo JS correspondente.
+ * @template {string} T
+ * @typedef {Uppercase<T> extends 'BOOLEAN' | 'BOOL' ? boolean : Uppercase<T> extends 'BIGINT' ? bigint : Uppercase<T> extends 'INTEGER' | 'INT' | 'SMALLINT' | 'TINYINT' | 'REAL' | 'FLOAT' | 'DOUBLE' | 'DECIMAL' | 'NUMERIC' ? number : Uppercase<T> extends 'JSON' ? Record<any, any> : Uppercase<T> extends 'TAGS' ? string[] : Uppercase<T> extends 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' ? Date | string | number : string} MapSqlType
+ */
+
+/**
  * Extracts column names from the configuration and creates a complete object type.
  * TypeScript maps each tuple [name, type, ...] to { name: any }.
- * @template {SqlTableConfig} C
- * @typedef {{ [K in C[number] as K[0]]: any }} TableRow
+ * @template {SqlTableConfig<string, string, string, string>} C
+ * @typedef {{ [K in C[number] as K[0]]: K[1] extends string ? MapSqlType<K[1]> : any }} TableRow
  */
 
 /**
  * Represents a partial table row, perfect for insertions and updates.
- * @template {SqlTableConfig} C
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {Partial<TableRow<C>>} PartialRow
  */
 
 /**
  * Extracts only column names as a string union (e.g., "id" | "name").
- * @template {SqlTableConfig} C
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {C[number][0]} ColumnNames
+ */
+
+/**
+ * @template {string} Item1
+ * @template {string} Item2
+ * @template {string} Item3
+ * @template {string} Item4
+ * @typedef {readonly [Item1, Item2, Item3, Item4] | readonly [Item1, Item2, Item3] | readonly [Item1, Item2] | readonly [Item1]} SqlTableItem
  */
 
 /**
@@ -33,7 +48,11 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  * - `columnOptions` (`string`) – SQL options like `NOT NULL`, `PRIMARY KEY`, `DEFAULT`, etc.
  * - `columnMeta` (`any`) – Arbitrary metadata related to the column (e.g., for UI, descriptions, tags).
  *
- * @typedef {Array<[string, string, string, string]|[string, string, string]|[string, string]|[string]>} SqlTableConfig
+ * @template {string} Item1
+ * @template {string} Item2
+ * @template {string} Item3
+ * @template {string} Item4
+ * @typedef {readonly SqlTableItem<Item1,Item2,Item3,Item4>[]} SqlTableConfig
  */
 
 /**
@@ -50,11 +69,12 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 /**
  * Tag group definition used to build dynamic SQL clauses for tag filtering.
  *
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {Object} TagCriteria - Tag group definition to build the clause from.
- * @property {string} [group.column] - SQL column name for tag data (defaults to `this.getColumnName()`).
- * @property {string} [group.tableName] - Optional table name used (defaults to `this.defaultTableName`).
- * @property {boolean} [group.allowWildcards=false] - Whether wildcards are allowed in matching.
- * @property {Array<string|string[]>} [group.include=[]] - Tag values or grouped OR conditions to include.
+ * @property {ColumnNames<C> | string} [column] - SQL column name for tag data (defaults to `this.getColumnName()`).
+ * @property {string} [tableName] - Optional table name used (defaults to `this.defaultTableName`).
+ * @property {boolean} [allowWildcards] - Whether wildcards are allowed in matching.
+ * @property {Array<string|string[]>} [include] - Tag values or grouped OR conditions to include.
  */
 
 /**
@@ -69,15 +89,17 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 /**
  * Represents a flexible select query input, allowing for different forms.
  *
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {(
- *   string |
- *   string[] |
+ *   '*' |
+ *   ColumnNames<C> |
+ *   (ColumnNames<C> | string)[] |
  *   {
- *     aliases?: Record<string, string>; // Mapping of display names to real column names.
- *     values?: string[];                // List of column names to select.
- *     boost?: {                         // Boost configuration for weighted ranking.
- *       alias?: string;                 // The alias to associate with the boost configuration.
- *       value?: BoostValue[];           // List of boost rules to apply.
+ *     aliases?: Partial<Record<ColumnNames<C>, string>> & Record<string, string>;
+ *     values?: (ColumnNames<C> | string)[];
+ *     boost?: {
+ *       alias?: string;
+ *       value?: BoostValue<C>[];
  *     };
  *   } |
  *   null
@@ -104,19 +126,20 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 /**
  * Represents conditions used in a SQL WHERE clause.
  *
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {Object} WhereConditions
  * @property {'OR'|'AND'|'or'|'and'} [group] - Logical operator to combine conditions (`AND`/`OR`). Case-insensitive.
  *                                             Only used when `conditions` is provided.
- * @property {QueryGroup[]} [conditions] - Array of grouped `WhereConditions` or `QueryGroup` entries.
+ * @property {QueryGroup<C>[]} [conditions] - Array of grouped `WhereConditions` or `QueryGroup` entries.
  *                                         Used for nesting logical clauses.
  *
  * @property {string|null|undefined} [funcName] - Optional function name applied to the column (e.g., UPPER, LOWER).
  * @property {string|null|undefined} [operator] - Comparison operator (e.g., '=', 'LIKE', 'IN').
- * @property {string|null|undefined} [value] - Value to compare against.
+ * @property {string|number|boolean|null|undefined} [value] - Value to compare against.
  * @property {string|null|undefined} [valType] - Custom function for value transformation (e.g., for SOUNDEX).
  * @property {'left'|'right'|null|undefined} [lPos] - Logical position indicator (e.g., 'left', 'right') for chaining.
  * @property {string|null|undefined} [newOp] - Replacement operator, used to override the main one.
- * @property {string|null|undefined} [column] - Name of the column to apply the condition on.
+ * @property {ColumnNames<C> | string} [column] - Name of the column to apply the condition on.
  */
 
 /**
@@ -153,15 +176,16 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  * This structure allows dynamic grouping of multiple WHERE conditions
  * (useful for advanced filters, tag clauses, or scoped searches).
  *
- * @typedef {WhereConditions | Record<string, WhereConditions>} QueryGroup
+ * @template {SqlTableConfig<string, string, string, string>} C
+ * @typedef {WhereConditions<C> | Partial<Record<ColumnNames<C>, WhereConditions<C>>> | Record<string, WhereConditions<C>>} QueryGroup
  */
 
 /**
  * Represents a boosting rule for weighted query ranking.
- *
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {Object} BoostValue
- * @property {string[]} [columns] - List of columns to apply the boost on.
- * @property {''|'LIKE'|'ILIKE'} [operator=''] - Operator used in the condition (e.g., '=', 'LIKE').
+ * @property {ColumnNames<C>[] | string[]} [columns] - List of columns to apply the boost on.
+ * @property {''|'LIKE'|'ILIKE'|'IN'|'='|'!='|'>'|'<'} [operator=''] - Operator used in the condition (e.g., '=', 'LIKE').
  * @property {string|string[]} [value] - Value to match in the condition.
  * @property {boolean} [array=false] - When true, performs matching using `json_each()` for JSON/ARRAY columns instead of text comparison.
  * @property {number} [weight=1] - Weight factor to boost results matching the condition.
@@ -177,9 +201,10 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  */
 
 /**
+ * @template {SqlTableConfig<string, string, string, string>} C
  * @typedef {Object} TableSettings
  * @property {string} [name]
- * @property {SelectQuery} [select='*'] - SELECT clause configuration. Can be simplified; complex expressions are auto-formatted.
+ * @property {SelectQuery<C>} [select='*'] - SELECT clause configuration. Can be simplified; complex expressions are auto-formatted.
  * @property {string|null} [join=null] - Optional JOIN table name.
  * @property {string|null} [joinCompare='t.key = j.key'] - Condition used to match JOIN tables.
  * @property {string|null} [order=null] - Optional ORDER BY clause.
@@ -204,22 +229,29 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  * A function that takes a WhereConditions object and returns a modified WhereConditions object.
  * Typically used to append or transform SQL WHERE clauses.
  *
- * @typedef {(conditions: WhereConditions) => WhereConditions} WhereConditionsFunc
+ * @template {SqlTableConfig<string, string, string, string>} C
+ * @typedef {(conditions: WhereConditions<C>) => WhereConditions<C>} WhereConditionsFunc
  */
 
 /**
  * A map of condition identifiers to their associated transformation functions.
  * Each key represents a named SQL condition function.
  *
- * @typedef {Record<string, WhereConditionsFunc>} SqlConditions
+ * @template {SqlTableConfig<string, string, string, string>} C
+ * @typedef {Record<string, WhereConditionsFunc<C>>} SqlConditions
  */
 
 /**
  * TinySQLQuery is a queries operating system developed to operate in a specific table.
- * @template {SqlTableConfig} Config
+ * @template {string} Item1
+ * @template {string} Item2
+ * @template {string} Item3
+ * @template {string} Item4
  */
 class PuddySqlQuery {
-  /** @type {SqlConditions} */
+  /** @typedef {SqlTableConfig<Item1, Item2, Item3, Item4>} Config */
+
+  /** @type {SqlConditions<Config>} */
   #conditions = {};
 
   /** @type {Record<string, function(string) : string>} */
@@ -280,7 +312,7 @@ class PuddySqlQuery {
    * This function ensures safe fallback values and formats the SELECT clause.
    * @param {Object} config
    * @param {Config} config.columns - An array of column definitions.
-   * @param {TableSettings} [config.settings={}] - Partial database settings to apply.
+   * @param {TableSettings<Config>} [config.settings={}] - Partial database settings to apply.
    * @param {PuddySqlEngine} [config.db] - PuddySql Instance.
    * Each column is defined by an array containing the column name, type, and optional configurations.
    */
@@ -491,7 +523,7 @@ class PuddySqlQuery {
    * Retrieves a registered SQL condition function by its identifier.
    *
    * @param {string} key - The condition identifier to retrieve.
-   * @returns {WhereConditionsFunc} - The associated condition function.
+   * @returns {WhereConditionsFunc<Config>} - The associated condition function.
    * @throws {Error} If the condition does not exist.
    */
   getCondition(key) {
@@ -502,7 +534,7 @@ class PuddySqlQuery {
   /**
    * Returns a shallow copy of all registered SQL condition functions.
    *
-   * @returns {SqlConditions} - An object containing all condition functions mapped by key.
+   * @returns {SqlConditions<Config>} - An object containing all condition functions mapped by key.
    */
   getConditions() {
     return { ...this.#conditions };
@@ -522,7 +554,7 @@ class PuddySqlQuery {
    * This method does not allow overwriting an existing key in either condition or value handlers.
    *
    * @param {string} key - Unique identifier for the new condition type.
-   * @param {string|WhereConditions|WhereConditionsFunc} conditionHandler - Defines the logic or operator of the condition.
+   * @param {string|WhereConditions<Config>|WhereConditionsFunc<Config>} conditionHandler - Defines the logic or operator of the condition.
    * @param {(function(string): string)|null} [valueHandler=null] - Optional custom function for value transformation (e.g., for SOUNDEX).
    *
    * @throws {Error} If the key is not a non-empty string.
@@ -698,7 +730,7 @@ class PuddySqlQuery {
    *
    * Escaping of all values is handled by `pg.escapeLiteral()` for SQL safety (PostgreSQL).
    *
-   * @param {SelectQuery} [input = '*'] - Select clause definition.
+   * @param {SelectQuery<Config>} [input = '*'] - Select clause definition.
    * @returns {string} - A valid SQL SELECT clause string.
    *
    * @throws {TypeError} If the input is of an invalid type.
@@ -772,7 +804,7 @@ class PuddySqlQuery {
     /**
      * Boost parser helper
      *
-     * @param {BoostValue[]} boostArray
+     * @param {BoostValue<Config>[]} boostArray
      * @param {string} alias
      * @returns {string}
      */
@@ -1009,7 +1041,7 @@ class PuddySqlQuery {
 
   /**
    * Updates the table by adding, removing, modifying or renaming columns.
-   * @param {SqlTableConfig} changes - An array of changes to be made to the table.
+   * @param {SqlTableConfig<string, string, string, string>} changes - An array of changes to be made to the table.
    * Each change is defined by an array, where:
    *   - To add a column: ['ADD', 'columnName', 'columnType', 'columnOptions']
    *   - To remove a column: ['REMOVE', 'columnName']
@@ -1369,7 +1401,7 @@ class PuddySqlQuery {
    * Escapes values inside the valueObj using type definitions from this.#table.
    * Only modifies the values that have a matching column in the table.
    * Uses the appropriate parser from #jsonEscapeAlias.
-   * 
+   *
    * @param {PartialRow<Config>} valueObj - The object containing values to be escaped.
    * @returns {PartialRow<Config>} The same valueObj with its values escaped according to table definitions.
    */
@@ -1480,8 +1512,8 @@ class PuddySqlQuery {
   /**
    * Applies type-specific escaping to a single value based on the table's column definition.
    * @param {any} v - The raw value to be escaped.
-   * @param {ColumnNames<Config>} name - The exact column name associated with the value.
-   * 
+   * @param {ColumnNames<Config>|string} name - The exact column name associated with the value.
+   *
    * @returns {any} The escaped value if a valid type and handler exist; otherwise, the original value.
    */
   escapeValuesFix(v, name) {
@@ -1500,7 +1532,7 @@ class PuddySqlQuery {
    * generate the conditions, and updates the given fields in valueObj.
    *
    * @param {PartialRow<Config>} valueObj - An object representing the columns and new values for the update.
-   * @param {QueryGroup} filter - An object containing the conditions for the WHERE clause.
+   * @param {QueryGroup<Config>} filter - An object containing the conditions for the WHERE clause.
    * @returns {Promise<number>} - Count of rows that were updated.
    */
   async advancedUpdate(valueObj = {}, filter = {}) {
@@ -1768,7 +1800,7 @@ class PuddySqlQuery {
    *
    * Uses the internal parseWhere method to build a flexible condition set.
    *
-   * @param {QueryGroup} filter - An object containing the WHERE condition(s).
+   * @param {QueryGroup<Config>} filter - An object containing the WHERE condition(s).
    * @returns {Promise<number>} - Number of rows deleted.
    */
   async advancedDelete(filter = {}) {
@@ -1817,7 +1849,7 @@ class PuddySqlQuery {
    *
    * @param {number} count - Number of rows to retrieve.
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected.
    * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAmount(count, filterId = null, selectValue = '*') {
@@ -1845,7 +1877,7 @@ class PuddySqlQuery {
    * If an ID is provided, returns only the matching record(s).
    *
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected.
    * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAll(filterId = null, selectValue = '*') {
@@ -1932,7 +1964,7 @@ class PuddySqlQuery {
    * - Dynamic operators through the internal `#conditions` handler.
    *
    * @param {Pcache} [pCache={ index: 1, values: [] }] - Placeholder cache object.
-   * @param {QueryGroup} [group={}] - Grouped or single filter condition.
+   * @param {WhereConditions<Config>} [group={}] - Grouped or single filter condition.
    * @returns {string} SQL-formatted WHERE clause (without the "WHERE" keyword).
    *
    * @example
@@ -1955,6 +1987,8 @@ class PuddySqlQuery {
     if (Array.isArray(group.conditions)) {
       const logic =
         typeof group.group === 'string' && group.group.toUpperCase() === 'OR' ? 'OR' : 'AND';
+
+      // Tipagem explícita adicionada ao parâmetro cond para evitar o erro 7006 (any implícito)
       const innerConditions = group.conditions.map((cond) => {
         return `(${this._parseWhere(pCache, cond)})`;
       });
@@ -1987,6 +2021,7 @@ class PuddySqlQuery {
         if (typeof cond.operator === 'string') {
           const selected = cond.operator.toUpperCase();
           if (typeof this.#conditions[selected] === 'function') {
+            // @ts-ignore
             const result = this.#conditions[selected](cond);
             if (typeof result.operator === 'string') operator = result.operator;
             if (typeof result.value !== 'undefined') value = result.value;
@@ -2159,15 +2194,15 @@ class PuddySqlQuery {
    * If selectValue is null, it only returns the pagination/position data, not the item itself.
    *
    * @param {Object} [searchData={}] - Main search configuration.
-   * @param {QueryGroup} [searchData.q={}] - Nested criteria object.
-   * @param {TagCriteria[]|TagCriteria|null} [searchData.tagCriteria] - One or multiple tag criteria groups.
+   * @param {QueryGroup<Config>} [searchData.q={}] - Nested criteria object.
+   * @param {TagCriteria<Config>[]|TagCriteria<Config>|null} [searchData.tagCriteria] - One or multiple tag criteria groups.
    * @param {string[]} [searchData.tagCriteriaOps] - Optional logical operators between tag groups (e.g., ['AND', 'OR']).
    * @param {boolean} [searchData.isFlatTags=false] - Use the parseWhereFlat mode to tags.
    * @param {number} [searchData.perPage] - Number of items per page.
-   * @param {SelectQuery} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
+   * @param {SelectQuery<Config>} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
-   * @returns {{ query: string; values: any[] | undefined; perPage: number; selectValue: SelectQuery; }}
+   * @returns {{ query: string; values: any[] | undefined; perPage: number; selectValue: SelectQuery<Config>; }}
    */
   _findQuery(searchData = {}) {
     // --- Validate searchData types ---
@@ -2277,11 +2312,11 @@ class PuddySqlQuery {
    * If selectValue is null, it only returns the pagination/position data, not the item itself.
    *
    * @param {Object} [searchData={}] - Main search configuration.
-   * @param {QueryGroup} [searchData.q={}] - Nested criteria object.
-   * @param {TagCriteria[]|TagCriteria|null} [searchData.tagCriteria] - One or multiple tag criteria groups.
+   * @param {QueryGroup<Config>} [searchData.q={}] - Nested criteria object.
+   * @param {TagCriteria<Config>[]|TagCriteria<Config>|null} [searchData.tagCriteria] - One or multiple tag criteria groups.
    * @param {string[]} [searchData.tagCriteriaOps] - Optional logical operators between tag groups (e.g., ['AND', 'OR']).
    * @param {number} [searchData.perPage] - Number of items per page.
-   * @param {SelectQuery} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
+   * @param {SelectQuery<Config>} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
    * @returns {Promise<FindResult<PartialRow<Config>> | null>}
@@ -2324,11 +2359,11 @@ class PuddySqlQuery {
    * Pagination can be enabled using `perPage`, and additional settings like `order`, `join`, and `limit` can be passed inside `searchData`.
    *
    * @param {Object} [searchData={}] - Main search configuration.
-   * @param {QueryGroup} [searchData.q={}] - Nested criteria object.
+   * @param {QueryGroup<Config>} [searchData.q={}] - Nested criteria object.
    *        Can be a flat object style or grouped with `{ group: 'AND'|'OR', conditions: [...] }`.
-   * @param {TagCriteria[]|TagCriteria|null} [searchData.tagsQ] - One or multiple tag criteria groups.
+   * @param {TagCriteria<Config>[]|TagCriteria<Config>|null} [searchData.tagsQ] - One or multiple tag criteria groups.
    * @param {string[]} [searchData.tagsOpsQ] - Optional logical operators between tag groups (e.g., ['AND', 'OR']).
-   * @param {SelectQuery} [searchData.select='*'] - Defines which columns or expressions should be selected in the query.
+   * @param {SelectQuery<Config>} [searchData.select='*'] - Defines which columns or expressions should be selected in the query.
    * @param {number|null} [searchData.perPage=null] - Number of results per page. If set, pagination is applied.
    * @param {boolean} [searchData.isFlatTags=false] - Use the parseWhereFlat mode to tags.
    * @param {number} [searchData.page=1] - Page number to retrieve when `perPage` is used.
@@ -2489,11 +2524,11 @@ class PuddySqlQuery {
    * Pagination can be enabled using `perPage`, and additional settings like `order`, `join`, and `limit` can be passed inside `searchData`.
    *
    * @param {Object} [searchData={}] - Main search configuration.
-   * @param {QueryGroup} [searchData.q={}] - Nested criteria object.
+   * @param {QueryGroup<Config>} [searchData.q={}] - Nested criteria object.
    *        Can be a flat object style or grouped with `{ group: 'AND'|'OR', conditions: [...] }`.
-   * @param {TagCriteria[]|TagCriteria|null} [searchData.tagsQ] - One or multiple tag criteria groups.
+   * @param {TagCriteria<Config>[]|TagCriteria<Config>|null} [searchData.tagsQ] - One or multiple tag criteria groups.
    * @param {string[]} [searchData.tagsOpsQ] - Optional logical operators between tag groups (e.g., ['AND', 'OR']).
-   * @param {SelectQuery} [searchData.select='*'] - Defines which columns or expressions should be selected in the query.
+   * @param {SelectQuery<Config>} [searchData.select='*'] - Defines which columns or expressions should be selected in the query.
    * @param {number|null} [searchData.perPage=null] - Number of results per page. If set, pagination is applied.
    * @param {number} [searchData.page=1] - Page number to retrieve when `perPage` is used.
    * @param {string} [searchData.order] - Custom `ORDER BY` clause (e.g. `'created_at DESC'`).

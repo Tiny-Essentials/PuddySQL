@@ -11,8 +11,18 @@ import PuddySqlMigrator from './PuddySqlMigrator.mjs';
 /** @typedef {import('pg').Pool} PgPool */
 /** @typedef {import('sqlite').Database} SqliteDb */
 
-/** @typedef {import('./PuddySqlQuery.mjs').TableSettings} TableSettings */
-/** @typedef {import('./PuddySqlQuery.mjs').SqlTableConfig} SqlTableConfig */
+/**
+ * @template {string} Item1
+ * @template {string} Item2
+ * @template {string} Item3
+ * @template {string} Item4
+ * @typedef {import('./PuddySqlQuery.mjs').SqlTableConfig<Item1, Item2, Item3, Item4>} SqlTableConfig
+ */
+
+/**
+ * @template {SqlTableConfig<string, string, string, string>} C
+ * @typedef {import('./PuddySqlQuery.mjs').TableSettings<C>} TableSettings
+ */
 
 /**
  * PuddySql is a wrapper for basic SQL operations on a local storage abstraction.
@@ -28,7 +38,7 @@ class PuddySqlInstance extends PuddySqlEngine {
   // @ts-ignore
   #db;
 
-  /** @type {Record<string, PuddySqlQuery<any>>} */
+  /** @type {Record<string, PuddySqlQuery<any, any, any, any>>} */
   #tables = {};
   /** @type {PuddySqlMigrator<this>} */
   #migrator;
@@ -245,10 +255,13 @@ class PuddySqlInstance extends PuddySqlEngine {
    * The table name and column data are passed into the `PuddySqlQuery` submodule to construct the table schema.
    * Additional settings can be provided to customize the behavior of the table (e.g., `select`, `order`, `id`).
    *
-   * @template {SqlTableConfig} Config
-   * @param {TableSettings} settings - Settings to customize the table creation. This can include properties like `select`, `join`, `order`, `id`, etc.
-   * @param {Config} tableData - An array of columns and their definitions to create the table. Each column is defined by an array, which can include column name, type, and additional settings.
-   * @returns {Promise<PuddySqlQuery<Config>>} Resolves to the `PuddySqlQuery` instance associated with the created or existing table.
+   * @template {string} Item1
+   * @template {string} Item2
+   * @template {string} Item3
+   * @template {string} Item4
+   * @param {TableSettings<SqlTableConfig<Item1, Item2, Item3, Item4>>} settings - Settings to customize the table creation. This can include properties like `select`, `join`, `order`, `id`, etc.
+   * @param {SqlTableConfig<Item1, Item2, Item3, Item4>} tableData - An array of columns and their definitions to create the table. Each column is defined by an array, which can include column name, type, and additional settings.
+   * @returns {Promise<PuddySqlQuery<Item1, Item2, Item3, Item4>>} Resolves to the `PuddySqlQuery` instance associated with the created or existing table.
    * @throws {Error} If the table has already been initialized.
    */
   async initTable(settings, tableData) {
@@ -259,7 +272,7 @@ class PuddySqlInstance extends PuddySqlEngine {
       await newTable.initTable();
 
       this.#tables[settings.name] = newTable;
-      return this.#tables[settings.name];
+      return newTable;
     }
     throw new Error('This table has already been initialized');
   }
@@ -271,7 +284,7 @@ class PuddySqlInstance extends PuddySqlEngine {
    * instance associated with the table name. If the table does not exist, it returns `null`.
    *
    * @param {string} tableName - The name of the table to retrieve.
-   * @returns {PuddySqlQuery<unknown>} The `PuddySqlQuery` instance associated with the table, or `null` if the table does not exist.
+   * @returns {PuddySqlQuery<any, any, any, any>} The `PuddySqlQuery` instance associated with the table, or `null` if the table does not exist.
    */
   getTable(tableName) {
     if (typeof tableName !== 'string' || tableName.trim() === '')

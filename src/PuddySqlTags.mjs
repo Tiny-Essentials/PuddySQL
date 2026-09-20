@@ -3,7 +3,9 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 
 /** @typedef {{ title: string; parser?: (value: string) => string }} SpecialQuery */
 /** @typedef {import('./PuddySqlQuery.mjs').Pcache} Pcache */
-/** @typedef {import('./PuddySqlQuery.mjs').TagCriteria} TagCriteria */
+/**
+ * @typedef {import('./PuddySqlQuery.mjs').TagCriteria<any>} TagCriteria
+ */
 
 /**
  * Represents a key-value pair extracted from a special chunk format.
