@@ -6,13 +6,13 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
 /**
  * Base mapper that converts SQL type strings into native TypeScript types.
  * @template {string} T
- * @typedef {Uppercase<T> extends 'BOOLEAN' | 'BOOL' ? boolean : Uppercase<T> extends 'BIGINT' ? bigint : Uppercase<T> extends 'INTEGER' | 'INT' | 'SMALLINT' | 'TINYINT' | 'REAL' | 'FLOAT' | 'DOUBLE' | 'DECIMAL' | 'NUMERIC' ? number : Uppercase<T> extends 'JSON' ? Record<any, any> : Uppercase<T> extends 'TAGS' ? string[] : Uppercase<T> extends 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' ? Date | string | number : string} MapSqlTypeBase
+ * @typedef {T extends 'BOOLEAN' | 'BOOL' | 'boolean' | 'bool' ? boolean : T extends 'BIGINT' | 'bigint' ? bigint : T extends 'INTEGER' | 'INT' | 'SMALLINT' | 'TINYINT' | 'REAL' | 'FLOAT' | 'DOUBLE' | 'DECIMAL' | 'NUMERIC' | 'integer' | 'int' | 'smallint' | 'tinyint' | 'real' | 'float' | 'double' | 'decimal' | 'numeric' ? number : T extends 'JSON' | 'json' ? Record<any, any> : T extends 'TAGS' | 'tags' ? string[] : T extends 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' | 'date' | 'datetime' | 'timestamp' | 'time' ? Date | string | number : string} MapSqlTypeBase
  */
 
 /**
  * Checks if column options dictate it cannot be null.
  * @template {string} Opts
- * @typedef {Uppercase<Opts> extends `${string}NOT NULL${string}` ? true : Uppercase<Opts> extends `${string}PRIMARY KEY${string}` ? true : false} IsNotNull
+ * @typedef {Opts extends `${string}NOT NULL${string}` | `${string}not null${string}` | `${string}Not Null${string}` | `${string}PRIMARY KEY${string}` | `${string}primary key${string}` | `${string}Primary Key${string}` ? true : false} IsNotNull
  */
 
 /**
@@ -140,7 +140,7 @@ import { isJsonObject } from './tiny-modules/basics/objChecker.mjs';
  *
  * @property {string|null|undefined} [funcName] - Optional function name applied to the column (e.g., UPPER, LOWER).
  * @property {string|null|undefined} [operator] - Comparison operator (e.g., '=', 'LIKE', 'IN').
- * @property {string|number|boolean|null|undefined} [value] - Value to compare against.
+ * @property {string|number|boolean|bigint|Date|Record<any, any>|any[]|null|undefined} [value] - Value to compare against.
  * @property {string|null|undefined} [valType] - Custom function for value transformation (e.g., for SOUNDEX).
  * @property {'left'|'right'|null|undefined} [lPos] - Logical position indicator (e.g., 'left', 'right') for chaining.
  * @property {string|null|undefined} [newOp] - Replacement operator, used to override the main one.
@@ -315,7 +315,7 @@ class PuddySqlQuery {
    * and registered in #tagColumns using a PuddySqlTags instance,
    * but the original "TAGS" value will be preserved in this.#table.
    * This function ensures safe fallback values and formats the SELECT clause.
-   * @param {Object} config
+   * @param {Object} config - The configuration object for the table.
    * @param {Config} config.columns - An array of column definitions.
    * @param {TableSettings<Config>} [config.settings={}] - Partial database settings to apply.
    * @param {PuddySqlEngine} [config.db] - PuddySql Instance.
@@ -556,7 +556,7 @@ class PuddySqlQuery {
    * If a `valueHandler` is provided, it must be a function that handles value transformation,
    * and will be stored under the same key in the internal value function map.
    *
-   * This method does not allow overwriting an existing key in either condition or value handlers.
+   * This method does not allow overwriting an existing key in either conditions or value handlers.
    *
    * @param {string} key - Unique identifier for the new condition type.
    * @param {string|WhereConditions<Config>|WhereConditionsFunc<Config>} conditionHandler - Defines the logic or operator of the condition.
@@ -564,8 +564,8 @@ class PuddySqlQuery {
    *
    * @throws {Error} If the key is not a non-empty string.
    * @throws {Error} If the key already exists in either conditions or value handlers.
-   * @throws {Error} If conditionHandler is not a string, object with `operator`, or function.
-   * @throws {Error} If valueHandler is provided but is not a function.
+   * @throws {TypeError} If conditionHandler is not a string, object with `operator`, or function.
+   * @throws {TypeError} If valueHandler is provided but is not a function.
    */
   addCondition(key, conditionHandler, valueHandler = null) {
     if (typeof key !== 'string' || key.trim() === '') {
@@ -617,6 +617,8 @@ class PuddySqlQuery {
    *   - `#conditions[name]` for SQL structure generation
    *   - `#customValFunc[valType]` for optional value transformations
    *
+   * The final SQL looks like: `FUNC(column) OP FUNC($n)`, if both sides use the same function.
+   *
    * @param {string} funcName - SQL function name to wrap around the column (e.g., `LOWER`, `SOUNDEX`).
    * @param {boolean} [editParamByDefault=false] - If true, also applies the SQL function to the parameter by default.
    * @param {string} [operator='='] - Default SQL comparison operator (e.g., `=`, `!=`, `>`, `<`).
@@ -627,7 +629,7 @@ class PuddySqlQuery {
    * - Uses `group.newOp` (if provided) to override the default operator.
    * - Uses `group.funcName` (if string) to override the default function name used in `valType`.
    * - If `funcName !== null` and `editParamByDefault === true`, the function will also apply to the param.
-   * - The final SQL looks like: FUNC(column) OP FUNC($n), if both sides use the same function.
+   * - The final SQL looks like: `FUNC(column) OP FUNC($n)`, if both sides use the same function.
    *
    *
    * The `group` object passed at runtime may include:
@@ -776,14 +778,15 @@ class PuddySqlQuery {
    *         weight: 2
    *       },
    *       {
-   *         columns: 'tags',
+   *         columns: ['tags', 'description'],
    *         value: 'pinkie pie',
    *         operator: 'LIKE',
    *         weight: 1.5
    *       },
    *       {
-   *         columns: 'tags',
+   *         columns: ['tags'],
    *         value: 'oc',
+   *         operator: 'LIKE',
    *         weight: -1
    *       },
    *       {
@@ -1052,7 +1055,7 @@ class PuddySqlQuery {
    *   - To remove a column: ['REMOVE', 'columnName']
    *   - To modify a column: ['MODIFY', 'columnName', 'newColumnType', 'newOptions']
    *   - To rename a column: ['RENAME', 'oldColumnName', 'newColumnName']
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} A promise that resolves when the update operation is complete.
    *
    * @throws {TypeError} If `changes` is not an array of arrays.
    * @throws {Error} If any change has missing or invalid parameters.
@@ -1170,7 +1173,7 @@ class PuddySqlQuery {
 
   /**
    * Starts the table instance.
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} A promise that resolves when the table has been initialized in the database.
    *
    * @throws {TypeError} If any column definition is malformed.
    * @throws {Error} If table name is not defined in settings.
@@ -1185,7 +1188,7 @@ class PuddySqlQuery {
    * Tag editors are used for managing tag-based columns in SQL.
    *
    * @param {string} name - The column name to check.
-   * @returns {boolean} - Returns true if the column has an associated tag editor.
+   * @returns {boolean} Returns true if the column has an associated tag editor.
    */
   hasTagEditor(name) {
     if (this.#tagColumns[name]) return true;
@@ -1197,7 +1200,7 @@ class PuddySqlQuery {
    * Used when the column was defined as a "TAGS" column in the SQL table definition.
    *
    * @param {string} name - The column name to retrieve the tag editor for.
-   * @returns {PuddySqlTags} - The tag editor instance.
+   * @returns {PuddySqlTags} The tag editor instance.
    * @throws {Error} If the column is not associated with a tag editor.
    */
   getTagEditor(name) {
@@ -1209,7 +1212,7 @@ class PuddySqlQuery {
   /**
    * Returns a shallow copy of all column-to-tag-editor mappings.
    *
-   * @returns {Record<string, PuddySqlTags>} - All tag editor instances mapped by column name.
+   * @returns {Record<string, PuddySqlTags>} All tag editor instances mapped by column name.
    */
   get tagColumns() {
     return { ...this.#tagColumns };
@@ -1276,7 +1279,7 @@ class PuddySqlQuery {
     /**
      * Attempts to parse a string as JSON.
      * If already an object or array, returns the value as-is.
-     * Otherwise returns `null` on failure.
+     * Otherwise, returns `null` on failure.
      */
     json: (raw) => {
       if (typeof raw === 'string') {
@@ -1291,7 +1294,7 @@ class PuddySqlQuery {
       return null;
     },
     /**
-     * Parses or sanitizes tag input to ensure it is a valid array of strings.
+     * Parses and sanitizes tag input to ensure it is a valid array of strings.
      * - If the input is a JSON string, attempts to parse it as an array.
      * - If the input is already an array, ensures all elements are strings; non-string elements are set to `null`.
      * - Returns `null` if the input is neither a string nor an array, or if parsing fails.
@@ -1538,7 +1541,7 @@ class PuddySqlQuery {
    *
    * @param {PartialRow<Config>} valueObj - An object representing the columns and new values for the update.
    * @param {QueryGroup<Config>} filter - An object containing the conditions for the WHERE clause.
-   * @returns {Promise<number>} - Count of rows that were updated.
+   * @returns {Promise<number>} Count of rows that were updated.
    */
   async advancedUpdate(valueObj = {}, filter = {}) {
     // Validate parameters
@@ -1609,7 +1612,7 @@ class PuddySqlQuery {
    * @param {string|number|Array<string|number>|null} id - Primary key value(s) for each record.
    * @param {TData} valueObj - A single object or an array of objects containing the data to store.
    * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
-   * @returns {Promise<TData|null>} - Generated values will be returned, or null if nothing was generated.
+   * @returns {Promise<TData>} - Generated values will be returned, or null if nothing was generated.
    */
   async #set(id, valueObj, onlyIfNew = false) {
     // Validate 'onlyIfNew'
@@ -1666,7 +1669,8 @@ class PuddySqlQuery {
     const ids = isArray ? (Array.isArray(id) ? id : []) : [id];
 
     // Check if all objects have the same id amount
-    if (objects.length === 0) return null;
+    if (objects.length === 0)
+      throw new Error('The provided valueObj array must contain at least one object.');
     if (isArray && ids.length !== objects.length)
       throw new Error('When valueObj is an array, id must also be an array of the same length');
 
@@ -1755,7 +1759,7 @@ class PuddySqlQuery {
    * @param {string|number|Array<string|number>} id - Primary key value(s) for each record.
    * @param {TData} valueObj - A single object or an array of objects containing the data to store.
    * @param {boolean} [onlyIfNew=false] - If true, only insert if the record(s) do not already exist.
-   * @returns {Promise<TData|null>} - Generated values will be returned, or null if nothing was generated.
+   * @returns {Promise<TData>} - Generated values will be returned, or null if nothing was generated.
    */
   set(id, valueObj, onlyIfNew) {
     return this.#set(id, valueObj, onlyIfNew);
@@ -1769,7 +1773,6 @@ class PuddySqlQuery {
    * @returns {Promise<TData>} - Generated values will be returned, or null if nothing was generated.
    */
   add(valueObj) {
-    // @ts-ignore
     return this.#set(null, valueObj, true);
   }
 
@@ -1806,8 +1809,8 @@ class PuddySqlQuery {
    *
    * Uses the internal parseWhere method to build a flexible condition set.
    *
-   * @param {QueryGroup<Config>} filter - An object containing the WHERE condition(s).
-   * @returns {Promise<number>} - Number of rows deleted.
+   * @param {QueryGroup<Config>} filter - An object containing the conditions for the WHERE clause.
+   * @returns {Promise<number>} Number of rows deleted.
    */
   async advancedDelete(filter = {}) {
     if (!isJsonObject(filter)) {
@@ -1828,7 +1831,7 @@ class PuddySqlQuery {
    * Delete a record by its ID (and optional subId).
    * @param {string|number} id - Primary key value.
    * @param {string|number} [subId] - Optional sub-ID for composite key.
-   * @returns {Promise<number>} - Count of rows were updated.
+   * @returns {Promise<number>} Count of rows were updated.
    */
   async delete(id, subId) {
     if (typeof id !== 'string' && typeof id !== 'number')
@@ -1855,7 +1858,7 @@ class PuddySqlQuery {
    *
    * @param {number} count - Number of rows to retrieve.
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected in the query.
    * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAmount(count, filterId = null, selectValue = '*') {
@@ -1883,7 +1886,7 @@ class PuddySqlQuery {
    * If an ID is provided, returns only the matching record(s).
    *
    * @param {string|number|null} [filterId=null] - Optional ID to filter by.
-   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected.
+   * @param {SelectQuery<Config>} [selectValue='*'] - Defines which columns or expressions should be selected in the query.
    * @returns {Promise<PartialRow<Config>[]>} Array of strongly-typed records.
    */
   async getAll(filterId = null, selectValue = '*') {
@@ -1909,7 +1912,7 @@ class PuddySqlQuery {
    * @param {number} perPage - The number of items per page.
    * @param {number} page - The current page number (starting from 1).
    * @param {string} queryName - The query name to insert into the sql debug.
-   * @returns {Promise<PaginationResult<PartialRow<Config>>>}
+   * @returns {Promise<PaginationResult<PartialRow<Config>>>} A promise that resolves to the pagination results.
    */
   async execPagination(query, params, perPage, page, queryName = '') {
     if (typeof query !== 'string')
@@ -2208,7 +2211,7 @@ class PuddySqlQuery {
    * @param {SelectQuery<Config>} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
-   * @returns {{ query: string; values: any[] | undefined; perPage: number; selectValue: SelectQuery<Config>; }}
+   * @returns {{ query: string; values: any[] | undefined; perPage: number; selectValue: SelectQuery<Config>; }} The generated SQL query and its associated parameters.
    */
   _findQuery(searchData = {}) {
     // --- Validate searchData types ---
@@ -2248,7 +2251,18 @@ class PuddySqlQuery {
       !Array.isArray(joinConfig) &&
       !isJsonObject(joinConfig)
     )
-      throw new TypeError(`'searchData.join' must be a string, object, array, or null`);
+      throw new TypeError(`'searchData.join' must be a string, array, object, or null`);
+
+    if (
+      tagCriteria !== undefined &&
+      tagCriteria !== null &&
+      !Array.isArray(tagCriteria) &&
+      !isJsonObject(tagCriteria)
+    )
+      throw new TypeError(`'searchData.tagsQ' must be an array, object or null`);
+
+    if (tagCriteriaOps !== undefined && tagCriteriaOps !== null && !Array.isArray(tagCriteriaOps))
+      throw new TypeError(`'searchData.tagsOpsQ' must be an array if defined`);
 
     /** @type {Pcache} */
     const pCache = { index: 1, values: [] };
@@ -2325,7 +2339,7 @@ class PuddySqlQuery {
    * @param {SelectQuery<Config>} [searchData.select='*'] - Which columns to select. Set to null to skip item data.
    * @param {string} [searchData.order] - SQL ORDER BY clause. Defaults to configured order.
    * @param {string|JoinObj|JoinObj[]} [searchData.join] - JOIN definitions with table, compare, and optional type.
-   * @returns {Promise<FindResult<PartialRow<Config>> | null>}
+   * @returns {Promise<FindResult<PartialRow<Config>> | null>} The search results including pagination metadata.
    */
   async find(searchData = {}) {
     const { query, values, perPage, selectValue } = this._findQuery(searchData);
@@ -2442,7 +2456,7 @@ class PuddySqlQuery {
       throw new TypeError(`'searchData.order' must be a string if defined`);
 
     if (join !== null && typeof join !== 'string' && !Array.isArray(join) && !isJsonObject(join))
-      throw new TypeError(`'searchData.join' must be a string, array, object or null`);
+      throw new TypeError(`'searchData.join' must be a string, array, object, or null`);
 
     if (limit !== null && typeof limit !== 'number')
       throw new TypeError(`'searchData.limit' must be a number if defined`);
