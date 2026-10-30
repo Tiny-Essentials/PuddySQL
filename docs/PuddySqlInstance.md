@@ -1,16 +1,21 @@
 # 🗃️ `PuddySqlInstance` Class
 
-Extends [`PuddySqlEngine`](./PuddySqlEngine.mjs) to provide high-level SQL operations with table management, debug logging, and support for both **SQLite3** and **PostgreSQL**.
+Extends [`PuddySqlEngine`](./PuddySqlEngine.md) to provide high-level SQL operations with table management, debug logging, and support for both **SQLite3** and **PostgreSQL**.
 
 ---
 
 ## 🧠 Constructor
 
 ```js
-new PuddySqlInstance()
+new PuddySqlInstance(migratorTableName = 'puddy_migrations')
 ```
 
-Initializes the instance and sets up internal properties.
+Initializes the instance, sets up internal properties and creates the internal
+[`PuddySqlMigrator`](./PuddySqlMigrator.md) instance.
+
+| Parameter           | Type     | Default              | Description                                     |
+| ------------------- | -------- | -------------------- | ----------------------------------------------- |
+| `migratorTableName` | `string` | `'puddy_migrations'` | Table used by the migrator to store the version. |
 
 ---
 
@@ -18,9 +23,39 @@ Initializes the instance and sets up internal properties.
 
 * `#db`: The internal database instance (`sqlite` or `pg.Pool`).
 * `#tables`: A record of initialized tables using `PuddySqlQuery`.
+* `#migrator`: The internal `PuddySqlMigrator` instance.
 * `#debug`: Whether debug logging is enabled.
 * `#debugCount`: Number of debug calls (optional use).
 * `#consoleColors`: Whether debug console output uses colors.
+
+---
+
+## 🚚 Migrations
+
+### 📦 `migrator` (getter)
+
+Returns the internal [`PuddySqlMigrator`](./PuddySqlMigrator.md) instance, used to register
+migrations with `migrator.addMigration(version, callback)`.
+
+```js
+const db = new PuddySql.Instance();
+db.migrator.addMigration(1, async (db) => {
+  await db.getTable('users').updateTable([['ADD', 'email', 'TEXT']]);
+});
+```
+
+---
+
+### 🚀 `startMigration(targetVersion: number): Promise<void>`
+
+Starts the migration process, running every registered migration up to `targetVersion`.
+
+> ⚠️ **IMPORTANT:** Call this method only after ensuring that the base tables of your project
+> have already been verified/created.
+
+* Emits `Migration-Starting`, `Migration-Completed`, `Migration-Finished` and `Migration-Error`
+  events (see `PuddySqlEvents`).
+* Rejects if a migration throws.
 
 ---
 
@@ -69,12 +104,14 @@ Returns `true` if debug mode is enabled.
 
 ## 📦 Table Management
 
-### 🆕 `initTable(settings?: TableSettings, tableData?: SqlTableConfig): Promise<PuddySqlQuery>`
+### 🆕 `initTable(settings: TableSettings, tableData: SqlTableConfig): Promise<PuddySqlQuery>`
 
 Initializes a new table if it hasn't already been created.
 
 * Throws if the table already exists.
-* Internally creates a `PuddySqlQuery` instance and assigns settings/data.
+* Internally creates a `PuddySqlQuery` instance (which builds the `CREATE TABLE` statement),
+  awaits its `initTable()` and stores it in the internal table registry.
+* `settings` must be a plain object with a string `name`.
 
 ### 🔍 `getTable(tableName: string): PuddySqlQuery`
 

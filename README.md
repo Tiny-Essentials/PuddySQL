@@ -61,12 +61,14 @@ For API reference, check each module’s own documentation:
 
 ## 🔧 Module Overview
 
-| Module             | Description                                 |
-| ------------------ | ------------------------------------------- |
-| `PuddySqlEngine`   | Low-level query runner with DB abstraction  |
-| `PuddySqlInstance` | Manages databases and table bindings        |
-| `PuddySqlQuery`    | High-level querying with filters and joins  |
-| `PuddySqlTags`     | Parses tag filters into safe SQL conditions |
+| Module              | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `PuddySqlEngine`    | Low-level query runner with DB abstraction      |
+| `PuddySqlInstance`  | Manages databases and table bindings            |
+| `PuddySqlQuery`     | High-level querying with filters and joins      |
+| `PuddySqlTags`      | Parses tag filters into safe SQL conditions     |
+| `PuddySqlMigrator`  | Version-based schema migration runner           |
+| `PuddySqlEvents`    | Event name constants (`Connection-Error`, etc.) |
 
 ---
 
@@ -92,7 +94,8 @@ Here's a quick overview of what's available:
 | `PuddySql.Instance` | 🎮 Main SQL client class for managing databases (PostgreSQL or SQLite3)     |
 | `PuddySql.Query`    | 🧠 Query builder and smart search engine with advanced filtering            |
 | `PuddySql.Tags`     | 🏷️ Flexible tag system parser (with support for JSON arrays, boosts, etc.)  |
-| `PuddySql.Events`   | 🎯 Event manager to attach lifecycle hooks to query logic                   |
+| `PuddySql.Events`   | 🎯 Event name constants (`Connection-Error`, `Migration-*`)                  |
+| `PuddySql.Migrator` | 🚚 Version-based schema migration runner                                    |
 | `PuddySql.Utils`    | 🛠️ Useful utilities (object flattening, merge helpers, SQL formatters)      |
 | `PuddySql.pg`       | 🐘 PostgreSQL database engine (pg wrapper)                                  |
 | `PuddySql.sqlite3`  | 📀 SQLite3 engine for local/in-memory usage (sqlite3 wrapper)               |
@@ -159,10 +162,36 @@ const db = new PuddySql.Instance();
       },
     });
 
-  console.log(data1); 
-  console.log(data2); 
+  console.log(data1);
+  console.log(data2);
 })();
 ```
+
+---
+
+## 🚚 Migrations
+
+PuddySQL ships with a small version-based migration runner:
+
+```js
+const db = new PuddySql.Instance();
+await db.initSqlite3();
+
+const users = await db.initTable({ name: 'users', id: 'id' }, [
+  ['id', 'INTEGER', 'PRIMARY KEY'],
+  ['name', 'TEXT'],
+]);
+
+// Register migrations by version
+db.migrator.addMigration(1, async () => {
+  await users.updateTable([['ADD', 'email', 'TEXT']]);
+});
+
+// Run everything up to version 1
+await db.startMigration(1);
+```
+
+See [`docs/PuddySqlMigrator.md`](./docs/PuddySqlMigrator.md) for the full reference.
 
 ---
 

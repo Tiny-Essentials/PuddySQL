@@ -45,18 +45,19 @@ Returns the currently set SQL engine.
 
 ---
 
-### ❌ `isConnectionError(err: Error): boolean`
+### ❌ `isConnectionError(err: object): boolean`
 
 Detects if a given error matches known SQL engine-specific connection issues.
 
 * 📌 **Parameters**:
 
-  * `err` *(Error)*: Error object to check.
+  * `err` *(object)*: Error-like plain object to check (e.g. the caught error).
+* ⚠️ **Throws**: `TypeError` if `err` is not a plain object.
 * 🔍 **Behavior**:
 
   * For **PostgreSQL**, checks for known error codes like:
 
-    * `ECONNREFUSED`, `ETIMEDOUT`, `28P01`, `08006`, etc.
+    * `ECONNREFUSED`, `ENOTFOUND`, `EHOSTUNREACH`, `ETIMEDOUT`, `EPIPE`, `28P01`, `3D000`, `08006`, `08001`, `08004`, `53300`, `57P01`.
   * For **SQLite3**, checks if the error message includes `SQLITE_CANTOPEN`.
 * ✅ **Returns**: `true` if a known connection error is detected.
 

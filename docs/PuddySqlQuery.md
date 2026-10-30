@@ -105,9 +105,10 @@ Enables dynamic grouping for advanced filters and scoped searches.
 Rule for weighted query boosting:
 
 * `columns` (optional array): Columns to apply boost on.
-* `operator`: Condition operator, e.g., `'='`, `'LIKE'`.
-* `value`: Value or array of values to match.
-* `weight`: Numeric factor to boost matched results.
+* `operator`: Condition operator. Only `'LIKE'`, `'ILIKE'` or `''` are accepted (default `''`).
+* `value`: Value or array of values to match. When `columns` is omitted, it must be a raw SQL condition string.
+* `array` (optional boolean, default `false`): When `true`, matches against a JSON/array column using `json_each()`.
+* `weight`: Numeric factor to boost matched results (default `1`).
 
 ---
 
@@ -174,27 +175,53 @@ The main query engine for operating on a specific SQL table with support for dyn
 * `#settings`: Current table/query settings.
 * `#table`: Table schema and column metadata.
 * `#tagColumns`: Tag filtering helpers per column.
+* `#columns`: The raw column definition array passed to the constructor.
+* `#columnsQuery`: The generated `CREATE TABLE IF NOT EXISTS` statement.
+* `#resultCounts`: Maps each engine to the property holding the affected row count.
+* `#joinTypes`: Maps JOIN type aliases to their SQL keywords.
 
 ---
 
-#### Method: `getDb()`
+#### Getter: `db`
 
-Safely retrieves the internal database instance.
-Throws if the internal DB is not a valid `PuddySqlEngine` instance.
+Returns the internal database instance (`PuddySqlEngine`).
 
 ```js
-const db = instance.getDb();
+const db = instance.db;
 ```
 
-**Throws:**
-`Error` if DB is invalid or uninitialized.
+---
+
+#### Getter: `columns`
+
+Returns a deep clone of the column definition array used to build the table.
+
+```js
+const columns = instance.columns;
+```
 
 ---
 
 ## ⚙️ Constructor & Condition Management
 
-### 🚀 Constructor: Initial Condition Setup  
-Initializes the query instance with a set of predefined SQL condition operators and function-based conditions.
+### 🚀 Constructor: `new PuddySqlQuery({ columns, db, settings })`
+
+Builds the table schema (the `CREATE TABLE IF NOT EXISTS` statement), stores the column
+metadata and registers all built-in SQL conditions. There is no `createTable()` or `setDb()`
+anymore — everything is configured through the constructor, and the table is only created in
+the database when `initTable()` is called.
+
+- `columns` (`SqlTableConfig`): Array of column definitions.
+- `db` (`PuddySqlEngine`): The database instance (must extend `PuddySqlEngine`).
+- `settings` (`TableSettings`): Table settings, including the required `name`.
+
+**Throws:** `TypeError` when `columns` is not an array, `settings` is not a plain object or
+`db` is not a `PuddySqlEngine`; `Error` when `settings.name` is missing.
+
+---
+
+### 🚀 Initial Condition Setup
+The constructor also initializes the query instance with a set of predefined SQL condition operators and function-based conditions.
 
 - Adds common operators like `'LIKE'`, `'NOT'`, `'='`, `'!='`, `'>='`, `'<='`, `'>'`, `'<'`.
 - Registers advanced SQL functions using `addConditionV2` for phonetic, string, math, and date/time functions:
@@ -470,7 +497,7 @@ Updates a SQL table schema by adding, removing, modifying, or renaming columns.
 
 #### Behavior:
 - Executes corresponding `ALTER TABLE` SQL statements.
-- Uses `this.getDb()` for DB access.
+- Uses `this.db` for DB access.
 - Throws on invalid input.
 - Logs errors if DB operations fail but continues.
 
@@ -492,16 +519,12 @@ Drops the current table if it exists.
 
 ---
 
-### 🏗️ Method: `async createTable(columns)`  
-Creates a SQL table based on column definitions.
+### 🏗️ Method: `async initTable()`
+Creates the table in the database using the schema built by the constructor.
 
-#### Parameters:
-- `columns` (`SqlTableConfig`): Array of column definitions, each an array:
-  - `[name, type, options?]`  
-  - Custom type `"TAGS"` is converted internally to `"JSON"` and registered for tag management.
 
 #### Behavior:
-- Builds a `CREATE TABLE IF NOT EXISTS` statement.
+- Executes the `CREATE TABLE IF NOT EXISTS` statement generated in the constructor.
 - Stores the column schema in `this.#table` with uppercase types and options.
 - Creates `PuddySqlTags` instances for `"TAGS"` columns stored in `this.#tagColumns`.
 - Throws on invalid definitions or missing table name.
@@ -533,11 +556,15 @@ Retrieves the `PuddySqlTags` instance for a specific tag column.
 
 ---
 
-### 📋 Method: `getTagEditors()`  
+### 📋 Getter: `tagColumns`
 Returns all tag editors as a shallow copy object mapping column names to their `PuddySqlTags`.
 
 #### Returns:
 - `Record<string, PuddySqlTags>` — All tag editors by column.
+
+```js
+const editors = table.tagColumns;
+```
 
 ---
 
@@ -575,7 +602,7 @@ Supported aliases include:
 
 ---
 
-### ✅ Method: `resultChecker(result)`
+### ✅ Method: `_resultChecker(result)`
 
 Converts result rows from raw SQL types into properly typed JavaScript values based on `this.#table`.
 
@@ -596,24 +623,6 @@ Converts values for writing back to the database using type definitions from `th
 
 #### Returns:
 - `FreeObj` — The same object, with values sanitized or transformed.
-
----
-
-### ⚙️ Method: `setDb(settings, db)`
-
-Merges new settings with existing internal config and sets the database instance.
-
-#### Parameters:
-- `settings` (`Partial<TableSettings>`) — Any new values to apply.
-- `db` (`PuddySqlEngine`) — Reference to the main database engine.
-
-#### Behavior:
-- Validates and fills default values (`select`, `join`, `id`, etc.)
-- Uses `selectGenerator` for advanced select clause handling.
-
-#### Throws:
-- `TypeError` if `settings` is not an object.
-- `Error` if `db` is not an instance of `PuddySqlEngine`.
 
 ---
 
@@ -729,6 +738,20 @@ Inserts or updates one or more rows. Automatically escapes values and handles ge
 
 ---
 
+### 📥 Method: `add(valueObj)`
+
+Inserts one or more new rows without an explicit primary key. Internally delegates to
+`#set(null, valueObj, true)`, so the database generates the key and conflicting rows are
+silently skipped (`ON CONFLICT DO NOTHING`).
+
+#### Parameters:
+- `valueObj` (`FreeObj|FreeObj[]`) — One or many objects with the fields to insert.
+
+#### Returns:
+- `Promise<FreeObj|FreeObj[]|null>` — Generated values, or `null` if nothing was generated.
+
+---
+
 ### 📌 Method: `get(id, subId?)`
 
 Fetches a single record using its primary key (and optional `subId` if defined).
@@ -810,7 +833,7 @@ Runs a paginated query and returns total items and total pages.
 
 ---
 
-### 🧩 Method: `parseWhere(pCache, group)`
+### 🧩 Method: `_parseWhere(pCache, group)`
 
 Parses a flexible query condition group into a SQL WHERE clause.
 
@@ -830,7 +853,7 @@ Parses a flexible query condition group into a SQL WHERE clause.
 #### Example:
 ```js
 const p = { index: 1, values: [] };
-const clause = this.parseWhere(p, {
+const clause = this._parseWhere(p, {
   group: 'OR',
   conditions: [
     { column: 'status', value: 'active' },
@@ -843,7 +866,7 @@ const clause = this.parseWhere(p, {
 
 ---
 
-### 🔄 Method: `insertJoin()`
+### 🔄 Method: `_insertJoin()`
 
 Returns a default `LEFT JOIN` clause if configured in `#settings`.
 
@@ -865,7 +888,7 @@ Internal object with predefined JOIN types:
 
 ---
 
-### 🧩 Method: `parseJoin(join)`
+### 🧩 Method: `_parseJoin(join)`
 
 Parses JOIN configuration into one or more SQL JOIN clauses.
 
@@ -881,13 +904,14 @@ Parses JOIN configuration into one or more SQL JOIN clauses.
 
 Finds the **first** matching result and returns its position, page, and optionally its data.
 
-Query only: `findQuery(searchData)`
+Query only: `_findQuery(searchData)`
 
 #### Parameters:
 - `searchData` (`object`)
   - `q`: QueryGroup or object condition
   - `tagCriteria`: Single or multiple tag filters
   - `tagCriteriaOps`: Logical ops between tag filters
+  - `isFlatTags`: Use `_parseWhereFlat()` for tag criteria
   - `perPage`: Required, results per page
   - `select`: Columns to select (`'*'` by default, or `null` to skip data)
   - `order`: Custom `ORDER BY`
@@ -902,7 +926,7 @@ Query only: `findQuery(searchData)`
 
 Performs a complete filtered query with optional **pagination**, **joins**, and **tags**.
 
-Query only: `searchQuery(searchData)`
+Query only: `_searchQuery(searchData)`
 
 #### Parameters:
 
@@ -911,6 +935,7 @@ Query only: `searchQuery(searchData)`
   * `q`: QueryGroup or flat condition object
   * `tagsQ`: Tags filter (array or object)
   * `tagsOpsQ`: Logical ops between tags (`['AND', 'OR']`)
+  * `isFlatTags`: Use `_parseWhereFlat()` for tag criteria
   * `select`: Select clause (`'*'`, array, object or `null`)
   * `perPage`: Items per page
   * `page`: Page number (default: 1)

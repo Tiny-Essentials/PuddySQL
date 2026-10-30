@@ -217,13 +217,14 @@ Retrieves whether the engine is currently in PostgreSQL mode.
 
 ---
 
-### `parseWhere(group: TagCriteria, pCache: Pcache): string`
+### `_parseWhere(group: TagCriteria, pCache: Pcache): string`
 
 Builds a SQL `WHERE` clause from a tag group definition.
 
 * Handles tag negation (`!tag`)
 * Supports wildcard substitution (`*`, `?`)
 * Uses `EXISTS` / `NOT EXISTS` for JSON arrays
+* Uses `= ANY(column)` when `setIsPgMode(true)` is enabled
 * Supports grouped OR conditions
 * Modifies `pCache` in-place to fill parameters (`$1`, `$2`, ...)
 
@@ -235,7 +236,7 @@ Builds a SQL `WHERE` clause from a tag group definition.
 
 ---
 
-### `parseWhereFlat(group: TagCriteria, pCache: Pcache): string`
+### `_parseWhereFlat(group: TagCriteria, pCache: Pcache): string`
 
 Builds an SQL `WHERE` clause for *flat* tag tables — where each row contains a single tag value.
 
