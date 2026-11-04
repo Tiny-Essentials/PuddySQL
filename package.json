@@ -8,38 +8,47 @@
   "ethereum": "jasmindreasond.x",
   "exports": {
     ".": {
+      "types": "./dist/index.d.mts",
       "require": "./dist/index.cjs",
       "import": "./dist/index.mjs"
     },
     "./Engine": {
+      "types": "./dist/PuddySqlEngine.d.mts",
       "require": "./dist/PuddySqlEngine.cjs",
       "import": "./dist/PuddySqlEngine.mjs"
     },
     "./Events": {
+      "types": "./dist/PuddySqlEvents.d.mts",
       "require": "./dist/PuddySqlEvents.cjs",
       "import": "./dist/PuddySqlEvents.mjs"
     },
     "./Instance": {
+      "types": "./dist/PuddySqlInstance.d.mts",
       "require": "./dist/PuddySqlInstance.cjs",
       "import": "./dist/PuddySqlInstance.mjs"
     },
     "./Migrator": {
+      "types": "./dist/PuddySqlMigrator.d.mts",
       "require": "./dist/PuddySqlMigrator.cjs",
       "import": "./dist/PuddySqlMigrator.mjs"
     },
     "./Query": {
+      "types": "./dist/PuddySqlQuery.d.mts",
       "require": "./dist/PuddySqlQuery.cjs",
       "import": "./dist/PuddySqlQuery.mjs"
     },
     "./Tags": {
+      "types": "./dist/PuddySqlTags.d.mts",
       "require": "./dist/PuddySqlTags.cjs",
       "import": "./dist/PuddySqlTags.mjs"
     },
     "./Modules": {
+      "types": "./dist/Modules.d.mts",
       "require": "./dist/Modules.cjs",
       "import": "./dist/Modules.mjs"
     },
     "./Utils": {
+      "types": "./dist/Utils.d.mts",
       "require": "./dist/Utils.cjs",
       "import": "./dist/Utils.mjs"
     }
